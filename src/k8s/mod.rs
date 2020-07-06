@@ -44,8 +44,10 @@ pub fn deploy_h2o(client: Client, namespace: &str) {
 mod tests {
     use std::env;
     use std::path::Path;
+    use super::kube::Client;
 
     const TEST_KUBECONFIG_ENVVAR: &str = "KUBECONFIG";
+    const TEST_CLUSTER_NAMESPACE: &str = "default";
 
     #[test]
     fn test_from_kubeconfig() {
@@ -60,5 +62,22 @@ mod tests {
         let kubeconfig_path: &Path = Path::new(&kubeconfig_location);
         assert!(kubeconfig_path.exists());
         super::from_kubeconfig(kubeconfig_path);
+    }
+
+    #[test]
+    fn test_deploy_h2o() {
+        let kubeconfig_location: String = match env::var(TEST_KUBECONFIG_ENVVAR) {
+            Ok(var) => { var },
+            Err(err) => {
+                panic!("Environment variable {} not defined.\
+            Unable to construct Kubernetes client. Error: {}", TEST_KUBECONFIG_ENVVAR, err);
+            },
+        };
+
+        let kubeconfig_path: &Path = Path::new(&kubeconfig_location);
+        assert!(kubeconfig_path.exists());
+        let client: Client = super::from_kubeconfig(kubeconfig_path);
+
+        super::deploy_h2o(client, TEST_CLUSTER_NAMESPACE)
     }
 }
