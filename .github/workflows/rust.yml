@@ -18,8 +18,6 @@ jobs:
     - name: actions-k3s
       uses: debianmaster/actions-k3s@v1.0.0
       id: k3s
-      with:
-        key: v1.18.4+k3s1
     - uses: actions/checkout@v2
     - name: Build
       run: cargo build --verbose
