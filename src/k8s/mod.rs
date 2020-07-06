@@ -40,11 +40,12 @@ pub fn deploy_h2o(client: Client, namespace: &str) {
     println!("H2O started.");
 }
 
+#[cfg(test)]
 mod tests {
     use std::env;
     use std::path::Path;
 
-    const TEST_KUBECONFIG_ENVVAR: &str = "H2O_TEST_KUBECONFIG";
+    const TEST_KUBECONFIG_ENVVAR: &str = "KUBECONFIG";
 
     #[test]
     fn test_from_kubeconfig() {
