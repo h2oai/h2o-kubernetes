@@ -39,21 +39,13 @@ fn validate_kubeconfig_path(user_provided_path: String) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use std::env;
-
     use clap::{App, ArgMatches};
 
-    const TEST_KUBECONFIG_ENVVAR: &str = "KUBECONFIG";
+    use crate::tests::kubeconfig_location_panic;
 
     #[test]
     fn test_kubeconfig_path() {
-        let kubeconfig_location: String = match env::var(TEST_KUBECONFIG_ENVVAR) {
-            Ok(var) => { var },
-            Err(err) => {
-                panic!("Environment variable {} not defined.\
-            Unable to construct Kubernetes client. Error: {}", TEST_KUBECONFIG_ENVVAR, err);
-            },
-        };
+        let kubeconfig_location: String = kubeconfig_location_panic();
 
         // Existing kubeconfig
         let app: App = super::build_app();
