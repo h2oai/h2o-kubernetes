@@ -14,7 +14,7 @@ Goal is to provide a fully configurable tool with reasonable defaults for everyd
 
 ## Usage
 
-`h2ok --namespace default --kubeconfig /etc/rancher/k3s/k3s.yaml` deploys H2O-3 to a Kubernetes cluster defined in the provided `kubeconfig` file. The `namespace` option defaults to namespace.
+`h2ok deploy --namespace default --kubeconfig /etc/rancher/k3s/k3s.yaml` deploys H2O-3 to a Kubernetes cluster defined in the provided `kubeconfig` file. The `namespace` option defaults to namespace.
 
 Type `h2ok --help` for usage tips and general help.
 
