@@ -26,7 +26,7 @@ H2O Kubernetes CLI (`h2ok`) is written in [Rust](https://www.rust-lang.org/), us
 
 - Development build : `cargo build`
 - Release build: `cargo release`
-- Development run: `cargo run -- --namespace default --kubeconfig /etc/rancher/k3s/k3s.yaml`
+- Development run: `cargo run -- deploy --namespace default --kubeconfig /etc/rancher/k3s/k3s.yaml`
 - Test: `cargo test` - please note many tests have prerequisities - running Kubernetes cluster and the `KUBECONFIG` variable set.
 
 ## Automated tests
