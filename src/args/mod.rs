@@ -51,29 +51,33 @@ mod tests {
 
         // Existing kubeconfig
         let app: App = super::build_app();
-        let args_with_kubeconfig: Vec<&str> = vec!["h2ok", "--kubeconfig", kubeconfig_location.as_str()];
+        let args_with_kubeconfig: Vec<&str> = vec!["h2ok", "deploy", "--kubeconfig", kubeconfig_location.as_str()];
         let matches: ArgMatches = app.get_matches_from(args_with_kubeconfig);
-        assert!(matches.is_present("kubeconfig"));
+        let deploy: &ArgMatches = matches.subcommand_matches("deploy").unwrap();
+        assert!(deploy.is_present("kubeconfig"));
 
         // No kubeconfig provided - default value provided
         let app: App = super::build_app();
-        let args_no_kubeconfig: Vec<&str> = vec!["h2ok"];
+        let args_no_kubeconfig: Vec<&str> = vec!["h2ok", "deploy"];
         let matches: ArgMatches = app.get_matches_from(args_no_kubeconfig);
-        assert!(!matches.is_present("kubeconfig"));
+        let deploy: &ArgMatches = matches.subcommand_matches("deploy").unwrap();
+        assert!(!deploy.is_present("kubeconfig"));
     }
 
     #[test]
     fn test_namespace() {
         // No namespace provided - use "default" default :)
         let app: App = super::build_app();
-        let args_with_kubeconfig: Vec<&str> = vec!["h2ok"];
+        let args_with_kubeconfig: Vec<&str> = vec!["h2ok", "deploy"];
         let matches: ArgMatches = app.get_matches_from(args_with_kubeconfig);
-        assert_eq!("default", matches.value_of("namespace").unwrap());
+        let deploy: &ArgMatches = matches.subcommand_matches("deploy").unwrap();
+        assert_eq!("default", deploy.value_of("namespace").unwrap());
 
         // Custom namespace provided
         let app: App = super::build_app();
-        let args_with_kubeconfig: Vec<&str> = vec!["h2ok", "--namespace", "non-default"];
+        let args_with_kubeconfig: Vec<&str> = vec!["h2ok", "deploy", "--namespace", "non-default"];
         let matches: ArgMatches = app.get_matches_from(args_with_kubeconfig);
-        assert_eq!("non-default", matches.value_of("namespace").unwrap())
+        let deploy: &ArgMatches = matches.subcommand_matches("deploy").unwrap();
+        assert_eq!("non-default", deploy.value_of("namespace").unwrap())
     }
 }
