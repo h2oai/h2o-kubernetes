@@ -1,5 +1,7 @@
 # H2O Kubernetes CLI
 
+![Rust](https://github.com/Pscheidl/h2o-kubernetes-cli/workflows/Rust/badge.svg)
+
 A command-line tool to ease deployment of H2O open-source machine learning platform [H2O-3](https://github.com/h2oai/h2o-3) to Kubernetes. Currently in a state of a proof-of-concept. Official [H2O Kubernetes Docker images](https://hub.docker.com/r/h2oai/h2o-open-source-k8s) are used.
 
 ## The future plans
