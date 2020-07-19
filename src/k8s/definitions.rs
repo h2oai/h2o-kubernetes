@@ -11,7 +11,8 @@ metadata:
   namespace: <namespace>
 spec:
   serviceName: h2o-service
-  replicas: 3
+  podManagementPolicy: "Parallel"
+  replicas: <nodes>
   selector:
     matchLabels:
       app: <name>
@@ -44,11 +45,12 @@ spec:
             value: '8081'
 "#;
 
-pub fn h2o_stateful_set(name: &str, namespace: &str, docker_img_name: &str, docker_img_tag: &str) -> StatefulSet {
+pub fn h2o_stateful_set(name: &str, namespace: &str, docker_img_name: &str, docker_img_tag: &str, nodes: i32) -> StatefulSet {
     let stateful_set_definition = STATEFUL_SET_TEMPLATE.replace("<name>", name)
         .replace("<namespace>", namespace)
         .replace("<docker-img-name>", docker_img_name)
-        .replace("<docker-img-tag>", docker_img_tag);
+        .replace("<docker-img-tag>", docker_img_tag)
+        .replace("<nodes>", nodes.to_string().as_str());
 
     let stateful_set: StatefulSet = serde_yaml::from_str(&stateful_set_definition).unwrap();
     return stateful_set;
