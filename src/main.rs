@@ -12,10 +12,19 @@ mod tests;
 
 fn main() {
     let args: ArgMatches = args::parse_arguments();
-    let deploy = args.subcommand_matches("deploy").unwrap();
-    let kubeconfig: &str = deploy.value_of("kubeconfig").unwrap();
-    println!("Using kubeconfig at the following location: {}", kubeconfig);
-    let client : Client = k8s::from_kubeconfig(Path::new(kubeconfig));
-    k8s::deploy_h2o(client, args.value_of("namespace").unwrap_or("default"));
+    if let Some(deploy_args) = args.subcommand_matches("deploy"){
+        deploy(deploy_args);
+    }
 
+}
+
+fn deploy(deploy_args: &ArgMatches){
+    let client : Client;
+    if let Some(kubeconfig) = deploy_args.value_of("kubeconfig"){
+        println!("Using kubeconfig at the following location: {}", kubeconfig);
+        client = k8s::from_kubeconfig(Path::new(kubeconfig));
+    } else{
+        client = k8s::try_default();
+    }
+    k8s::deploy_h2o(client, deploy_args.value_of("namespace").unwrap_or("default"));
 }

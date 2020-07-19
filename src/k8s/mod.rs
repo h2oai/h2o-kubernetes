@@ -23,6 +23,10 @@ pub fn from_kubeconfig(kubeconfig_path: &Path) -> Client {
     return client;
 }
 
+pub fn try_default() -> Client{
+    return block_on(Client::try_default()).unwrap();
+}
+
 pub fn deploy_h2o(client: Client, namespace: &str) {
     let mut tokio_runtime: Runtime = tokio::runtime::Runtime::new().unwrap();
     let ingress_api: Api<Ingress> = Api::namespaced(client.clone(), namespace);
