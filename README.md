@@ -4,6 +4,8 @@
 
 A command-line tool to ease deployment of H2O open-source machine learning platform [H2O-3](https://github.com/h2oai/h2o-3) to Kubernetes. Currently in a state of a proof-of-concept. Official [H2O Kubernetes Docker images](https://hub.docker.com/r/h2oai/h2o-open-source-k8s) are used.
 
+![H2O Usage in console](h2ok.gif)
+
 ## The future plans
 - Usable from within of Kubernetes using in-container environment variables and kubernetes-provided kubeconfig.
 - Define version of H2O to deploy
