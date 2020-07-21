@@ -2,7 +2,7 @@
 
 ![Rust](https://github.com/Pscheidl/h2o-kubernetes-cli/workflows/Rust/badge.svg)
 
-A command-line tool to ease deployment of H2O open-source machine learning platform [H2O-3](https://github.com/h2oai/h2o-3) to Kubernetes. Currently in a state of a proof-of-concept. Official [H2O Kubernetes Docker images](https://hub.docker.com/r/h2oai/h2o-open-source-k8s) are used.
+A command-line tool to ease deployment (and undeployment) of H2O open-source machine learning platform [H2O-3](https://github.com/h2oai/h2o-3) to Kubernetes. Currently in a state of a proof-of-concept. Official [H2O Kubernetes Docker images](https://hub.docker.com/r/h2oai/h2o-open-source-k8s) are used.
 
 ![H2O Usage in console](h2ok.gif)
 
@@ -20,7 +20,9 @@ Goal is to provide a fully configurable tool with reasonable defaults for everyd
 
 `h2ok deploy --namespace default --kubeconfig /etc/rancher/k3s/k3s.yaml` deploys H2O-3 to a Kubernetes cluster defined in the provided `kubeconfig` file. The `namespace` option defaults to namespace.
 
-Type `h2ok --help` for usage tips and general help.
+Type `h2ok --help` for an overview of available subcommands. Use the `--help` or `-h` flag in combination with any of the subcommands to receive help for those subcommands, for example `h2ok deploy -h`.
+
+After each deployment is done, a file with cluster's name and an `.h2ok` suffix is saved to the working directory. Such a file serves as a descriptor of the deployment done and may later be used by `h2ok undeploy -f h2o-deployment-name.h2ok` to automatically undeploy the whole H2O cluster from Kubernetes.
 
 ## Building, testing and running
 
@@ -28,7 +30,7 @@ H2O Kubernetes CLI (`h2ok`) is written in [Rust](https://www.rust-lang.org/), us
 
 - Development build : `cargo build`
 - Release build: `cargo release`
-- Development run: `cargo run -- deploy --namespace default --kubeconfig /etc/rancher/k3s/k3s.yaml`
+- Development run: `cargo run -- deploy --namespace default --kubeconfig /etc/rancher/k3s/k3s.yaml --cluster_size 3`
 - Test: `cargo test` - please note many tests have prerequisities - running Kubernetes cluster and the `KUBECONFIG` variable set.
 
 ## Automated tests
