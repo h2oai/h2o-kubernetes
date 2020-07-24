@@ -8,7 +8,7 @@ use clap::ArgMatches;
 use kube::Client;
 use names::Generator;
 
-use crate::k8s::Deployment;
+use crate::k8s::{Deployment};
 
 mod args;
 mod k8s;
@@ -26,21 +26,55 @@ fn main() {
 
 fn deploy(deploy_args: &ArgMatches) {
     let client: Client;
-    if let Some(kubeconfig) = deploy_args.value_of("kubeconfig") {
-        println!("Using kubeconfig at the following location: {}", kubeconfig);
+    let mut kubeconfig_location: Option<String> = match deploy_args.value_of("kubeconfig") {
+        None => { Option::None }
+        Some(kubeconfig) => { Some(String::from(kubeconfig)) }
+    };
+
+    if let Some(kubeconfig) = &kubeconfig_location {
+        println!("Using user-provided kubeconfig at the following location: {}", kubeconfig);
         client = k8s::from_kubeconfig(Path::new(kubeconfig));
     } else {
-        client = k8s::try_default();
+        println!("Kubeconfig not provided. Searching in well-known locations.");
+        if let (Some(path), Some(cl)) = k8s::try_openshift_kubeconfig() {
+            println!("Discovered OpenShift kubeconfig at the following location: {} - using it for deployment.", path);
+            kubeconfig_location = Option::Some(path);
+            client = cl;
+        } else {
+            client = k8s::try_default();
+        }
     }
     let deployment_name: String = deployment_name(deploy_args);
     let nodes: i32 = deploy_args.value_of("cluster_size").unwrap().parse::<i32>().unwrap();
-    let mut deployment: Deployment = k8s::deploy_h2o(&client, deployment_name.as_str(),
-                                                     deploy_args.value_of("namespace").unwrap(), nodes);
-    if let Some(kubeconfig) = deploy_args.value_of("kubeconfig") {
-        deployment.kubeconfig_path = Option::Some(String::from(kubeconfig));
+    let memory_percentage: u8 = deploy_args.value_of("memory_percentage").unwrap().parse::<u8>().unwrap();
+    let memory: String = memory(deploy_args);
+    let num_cpus: u32 = cpus(deploy_args);
+    let mut deployment: Deployment = k8s::deploy_h2o(&client, deployment_name.as_str(), deploy_args.value_of("namespace").unwrap(),
+                                                     nodes, memory_percentage, &memory, num_cpus);
+
+    if kubeconfig_location.is_some() {
+        deployment.kubeconfig_path = Option::Some(kubeconfig_location.unwrap());
     }
-    println!("Finished deployment of '{}' cluster", deployment.name);
+    println!("Finished deployment of '{}' cluster.", deployment.name);
     persist_deployment(&deployment);
+}
+
+fn cpus(deploy_args: &ArgMatches) -> u32 {
+    return match deploy_args.value_of("cpus") {
+        None => {
+            1
+        }
+        Some(cpus) => { cpus.parse::<u32>().unwrap() }
+    };
+}
+
+fn memory(deploy_args: &ArgMatches) -> String {
+    return match deploy_args.value_of("memory") {
+        None => {
+            String::from("4Gi")
+        }
+        Some(memory) => { String::from(memory) }
+    };
 }
 
 fn deployment_name(deploy_args: &ArgMatches) -> String {
