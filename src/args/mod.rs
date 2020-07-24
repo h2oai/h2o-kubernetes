@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use clap::{App, Arg, ArgMatches, SubCommand};
+use regex::Regex;
 
 const APP_NAME: &str = "H2O Kubernetes CLI";
 const APP_VERSION: &str = "0.1.0";
@@ -39,7 +40,27 @@ fn build_app<'a>() -> App<'a, 'a> {
                 .long("cluster_name")
                 .short("c")
                 .help("Name of the H2O cluster deployment. Used as prefix for K8S entities.")
-                .number_of_values(1)))
+                .number_of_values(1))
+            .arg(Arg::with_name("memory_percentage")
+                .long("memory_percentage")
+                .short("p")
+                .default_value("50")
+                .help("Memory percentage allocated by H2O inside the container. <0,100>. Defaults to 50% to make space for XGBoost.")
+                .validator(self::validate_percentage))
+            .arg(Arg::with_name("memory")
+                .long("memory")
+                .short("m")
+                .number_of_values(1)
+                .default_value("1Gi")
+                .help("Amount of memory allocated by each H2O instance - in a format accepted by K8S, e.g. 4Gi.")
+                .validator(self::validate_memory))
+            .arg(Arg::with_name("cpus")
+                .long("cpus")
+                .number_of_values(1)
+                .default_value("1")
+                .help("Number of CPUs allocated for each H2O instance.")
+            )
+        )
         .subcommand(SubCommand::with_name("undeploy")
             .arg(Arg::with_name("file")
                 .long("file")
@@ -51,6 +72,7 @@ fn build_app<'a>() -> App<'a, 'a> {
             ));
 }
 
+/// Validates whether a file under a user-provided path exists.
 fn validate_path(user_provided_path: String) -> Result<(), String> {
     return if Path::new(&user_provided_path).is_file() {
         Result::Ok(())
@@ -59,12 +81,40 @@ fn validate_path(user_provided_path: String) -> Result<(), String> {
     };
 }
 
+
 fn validate_greater_than_zero(input: String) -> Result<(), String> {
-    let number: i32 = input.parse::<i32>().unwrap();
+    let number: i64 = input.parse::<i64>().unwrap();
     if number < 1 {
-        return Result::Err("".to_string());
+        return Result::Err("Error: The numbe provided must be greater than zero.".to_string());
     } else {
         return Result::Ok(());
+    }
+}
+
+/// Validates if user's input is a number in an expected range.
+///
+/// # Arguments
+///  * `input` User's input in String
+///
+fn validate_percentage(input: String) -> Result<(), String> {
+    let number: i64 = input.parse::<i64>().unwrap();
+    if number < 0 || number > 100 {
+        return Result::Err(format!("Error: The number must be withing range <{},{}>.", 0, 100));
+    } else {
+        return Result::Ok(());
+    }
+}
+
+const MEMORY_PATTERN: &str = "^([+-]?[0-9.]+)([eEinumkKMGTP]*[-+]?[0-9]*)$";
+
+/// Validates memory input from user. The pattern the input is matched against is the same pattern K8S uses.
+fn validate_memory(input: String) -> Result<(), String> {
+    let memory_regexp = Regex::new(MEMORY_PATTERN).unwrap();
+
+    if memory_regexp.is_match(&input) {
+        return Result::Ok(());
+    } else {
+        return Result::Err(format!("Memory requirement must match the following pattern: {}. For example 1Gi or 1024Mi.", MEMORY_PATTERN));
     }
 }
 
@@ -109,5 +159,11 @@ mod tests {
         let matches: ArgMatches = app.get_matches_from(args_with_kubeconfig);
         let deploy: &ArgMatches = matches.subcommand_matches("deploy").unwrap();
         assert_eq!("non-default", deploy.value_of("namespace").unwrap())
+    }
+
+    #[test]
+    fn validate_number_range() {
+        assert!(super::validate_percentage("10".to_string()).is_ok());
+        assert!(super::validate_percentage("101".to_string()).is_err());
     }
 }

@@ -224,6 +224,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "dirs"
+version = "3.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "142995ed02755914747cc6ca76fc7e4583cd18578746716d0508ea6ed558b9ff"
+dependencies = [
+ "dirs-sys",
+]
+
+[[package]]
 name = "dirs-sys"
 version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -459,11 +468,13 @@ name = "h2ok"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "dirs 3.0.1",
  "futures",
  "k8s-openapi",
  "kube",
  "kube-derive",
  "names",
+ "regex",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -624,7 +635,7 @@ dependencies = [
  "base64 0.12.3",
  "bytes",
  "chrono",
- "dirs",
+ "dirs 2.0.2",
  "either",
  "futures",
  "futures-util",
