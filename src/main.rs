@@ -115,7 +115,14 @@ fn undeploy(undeploy_args: &ArgMatches) {
     let deployment_file = File::open(file_path).unwrap();
     let deployment: Deployment = serde_json::from_reader(deployment_file).unwrap();
     let client: Client = k8s::from_kubeconfig(Path::new(deployment.kubeconfig_path.clone().unwrap().as_str()));
-    k8s::undeploy_h2o(&client, &deployment).unwrap();
+    match k8s::undeploy_h2o(&client, &deployment){
+        Ok(_) => {},
+        Err(deployment_errs) => {
+            for undeployed in deployment_errs.iter(){
+                println!("Unable to undeploy '{}' - skipping.", undeployed)
+            }
+        }
+    }
     println!("Removed deployment '{}'.", deployment.name);
     remove_file(file_path).unwrap();
 }
