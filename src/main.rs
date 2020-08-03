@@ -8,7 +8,7 @@ use clap::ArgMatches;
 use kube::Client;
 use names::Generator;
 
-use crate::k8s::{Deployment};
+use crate::k8s::Deployment;
 
 mod args;
 mod k8s;
@@ -25,38 +25,45 @@ fn main() {
 }
 
 fn deploy(deploy_args: &ArgMatches) {
-    let client: Client;
-    let mut kubeconfig_location: Option<String> = match deploy_args.value_of("kubeconfig") {
-        None => { Option::None }
-        Some(kubeconfig) => { Some(String::from(kubeconfig)) }
+    let kubeconfig_location: Option<String> = kubeconfig_location(deploy_args);
+    let client = match &kubeconfig_location {
+        None => {
+            match k8s::try_default() {
+                Ok(client) => {client},
+                Err(e) => {panic!("Unable to connect to Kubernetes cluster - no kubeconfig found. Reason:\n{}", e)},
+            }
+        },
+        Some(kubeconfig) => {k8s::from_kubeconfig(Path::new(kubeconfig))},
     };
 
-    if let Some(kubeconfig) = &kubeconfig_location {
-        println!("Using user-provided kubeconfig at the following location: {}", kubeconfig);
-        client = k8s::from_kubeconfig(Path::new(kubeconfig));
-    } else {
-        println!("Kubeconfig not provided. Searching in well-known locations.");
-        if let (Some(path), Some(cl)) = k8s::try_openshift_kubeconfig() {
-            println!("Discovered OpenShift kubeconfig at the following location: {} - using it for deployment.", path);
-            kubeconfig_location = Option::Some(path);
-            client = cl;
-        } else {
-            client = k8s::try_default();
-        }
-    }
     let deployment_name: String = deployment_name(deploy_args);
-    let nodes: i32 = deploy_args.value_of("cluster_size").unwrap().parse::<i32>().unwrap();
-    let memory_percentage: u8 = deploy_args.value_of("memory_percentage").unwrap().parse::<u8>().unwrap();
+    let namespace: String = String::from(deploy_args.value_of("namespace").unwrap());
+    let nodes: u32 = deploy_args.value_of("cluster_size").unwrap().parse::<u32>().unwrap();
+    let jvm_memory_percentage: u8 = deploy_args.value_of("memory_percentage").unwrap().parse::<u8>().unwrap();
     let memory: String = memory(deploy_args);
     let num_cpus: u32 = cpus(deploy_args);
-    let mut deployment: Deployment = k8s::deploy_h2o(&client, deployment_name.as_str(), deploy_args.value_of("namespace").unwrap(),
-                                                     nodes, memory_percentage, &memory, num_cpus);
 
-    if kubeconfig_location.is_some() {
-        deployment.kubeconfig_path = Option::Some(kubeconfig_location.unwrap());
-    }
+    let mut deployment: Deployment = Deployment::new(deployment_name, namespace, kubeconfig_location,
+                                                     jvm_memory_percentage, memory, num_cpus, nodes);
+    k8s::deploy_h2o_cluster(&client, &mut deployment);
+
     println!("Finished deployment of '{}' cluster.", deployment.name);
     persist_deployment(&deployment);
+}
+
+fn kubeconfig_location(deploy_args: &ArgMatches) -> Option<String> {
+    let kubeconfig_location: Option<String> = match deploy_args.value_of("kubeconfig") {
+        None => {
+            println!("No kubeconfig provided explicitly. Searching well-known locations.");
+            k8s::try_openshift_kubeconfig()
+        }
+        Some(kubeconfig) => {
+            println!("Using user-provided kubeconfig at the following location: {}", kubeconfig);
+            Some(String::from(kubeconfig))
+        }
+    };
+
+    return kubeconfig_location;
 }
 
 fn cpus(deploy_args: &ArgMatches) -> u32 {
@@ -115,10 +122,10 @@ fn undeploy(undeploy_args: &ArgMatches) {
     let deployment_file = File::open(file_path).unwrap();
     let deployment: Deployment = serde_json::from_reader(deployment_file).unwrap();
     let client: Client = k8s::from_kubeconfig(Path::new(deployment.kubeconfig_path.clone().unwrap().as_str()));
-    match k8s::undeploy_h2o(&client, &deployment){
-        Ok(_) => {},
+    match k8s::undeploy_h2o(&client, &deployment) {
+        Ok(_) => {}
         Err(deployment_errs) => {
-            for undeployed in deployment_errs.iter(){
+            for undeployed in deployment_errs.iter() {
                 println!("Unable to undeploy '{}' - skipping.", undeployed)
             }
         }

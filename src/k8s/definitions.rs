@@ -1,6 +1,5 @@
 use k8s_openapi::api::apps::v1::StatefulSet;
 use k8s_openapi::api::core::v1::Service;
-use k8s_openapi::api::extensions::v1beta1::Ingress;
 use serde_yaml;
 
 const STATEFUL_SET_TEMPLATE: &str = r#"
@@ -53,7 +52,7 @@ spec:
             value: '8081'
 "#;
 
-pub fn h2o_stateful_set(name: &str, namespace: &str, docker_img_name: &str, docker_img_tag: &str, nodes: i32,
+pub fn h2o_stateful_set(name: &str, namespace: &str, docker_img_name: &str, docker_img_tag: &str, nodes: u32,
                         memory_percentage: u8, memory: &str, num_cpu: u32) -> StatefulSet {
     let stateful_set_definition = STATEFUL_SET_TEMPLATE.replace("<name>", name)
         .replace("<namespace>", namespace)
@@ -91,28 +90,4 @@ pub fn h2o_service(name: &str, namespace: &str) -> Service {
 
     let service: Service = serde_yaml::from_str(&service_definition).unwrap();
     return service;
-}
-
-const INGRESS_TEMPLATE: &str = r#"
-apiVersion: extensions/v1beta1
-kind: Ingress
-metadata:
-  name: <name>-ingress
-spec:
-  rules:
-  - http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          serviceName: <name>-service
-          servicePort: 80
-"#;
-
-pub fn h2o_ingress(name: &str, namespace: &str) -> Ingress {
-    let ingress_definition = INGRESS_TEMPLATE.replace("<name>", name)
-        .replace("<namespace>", namespace);
-
-    let ingress: Ingress = serde_yaml::from_str(&ingress_definition).unwrap();
-    return ingress;
 }

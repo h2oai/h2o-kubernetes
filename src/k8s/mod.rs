@@ -1,7 +1,7 @@
 extern crate futures;
 extern crate kube;
 
-use std::path::{Path};
+use std::path::Path;
 
 use k8s_openapi::api::apps::v1::StatefulSet;
 use k8s_openapi::api::core::v1::Service;
@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use tokio::runtime::Runtime;
 
 use self::futures::executor::block_on;
-use self::kube::{Api, Config};
+use self::kube::{Api, Config, Error};
 use self::kube::api::{DeleteParams, Meta, PostParams};
 use self::kube::config::{Kubeconfig, KubeConfigOptions};
 
@@ -24,20 +24,20 @@ pub fn from_kubeconfig(kubeconfig_path: &Path) -> Client {
     return client;
 }
 
-pub fn try_default() -> Client {
-    return block_on(Client::try_default()).unwrap();
+pub fn try_default() -> Result<Client, Error> {
+    block_on(Client::try_default())
 }
 
-pub fn try_openshift_kubeconfig() -> (Option<String>, Option<Client>) {
+pub fn try_openshift_kubeconfig() -> Option<String> {
     match dirs::home_dir() {
-        None => { return (Option::None, Option::None) }
+        None => { Option::None }
         Some(mut path) => {
             // OpenShift default config location in user's home folder. This is there `oc` tool saves kubeconfig after `oc login`.
             path.push(".kube/config");
             return if !path.exists() {
-                (Option::None, Option::None)
+                Option::None
             } else {
-                (Some(String::from(path.to_str().unwrap())), Some(from_kubeconfig(path.as_path())))
+                Some(String::from(path.to_str().unwrap()))
             };
         }
     }
@@ -47,6 +47,10 @@ pub fn try_openshift_kubeconfig() -> (Option<String>, Option<Client>) {
 pub struct Deployment {
     pub name: String,
     pub namespace: String,
+    pub memory_percentage: u8,
+    pub memory: String,
+    pub num_cpu: u32,
+    pub num_nodes: u32,
     pub kubeconfig_path: Option<String>,
     pub ingresses: Vec<Ingress>,
     pub stateful_sets: Vec<StatefulSet>,
@@ -54,61 +58,57 @@ pub struct Deployment {
 }
 
 impl Deployment {
-    fn new(name: String, namespace: String, kubeconfig_path: Option<String>, ingresses: Vec<Ingress>,
-           stateful_sets: Vec<StatefulSet>, services: Vec<Service>) -> Deployment {
+    pub fn new(name: String, namespace: String, kubeconfig_path: Option<String>, memory_percentage: u8, memory: String, num_cpu: u32,
+               num_nodes: u32) -> Deployment {
         return Deployment {
             name: name,
             namespace: namespace,
+            memory_percentage: memory_percentage,
+            memory: memory,
+            num_cpu: num_cpu,
+            num_nodes: num_nodes,
             kubeconfig_path: kubeconfig_path,
-            ingresses: ingresses,
-            stateful_sets: stateful_sets,
-            services: services,
+            ingresses: Vec::new(),
+            stateful_sets: Vec::new(),
+            services: Vec::new(),
         };
     }
 }
 
-pub fn deploy_h2o(client: &Client, deployment_name: &str, namespace: &str, nodes: i32, memory_percentage: u8, memory: &str,
-                  num_cpu: u32) -> Deployment {
-    let mut deployment: Deployment = Deployment::new(String::from(deployment_name), String::from(namespace), Option::None,
-                                                     vec!(), vec!(), vec!());
+pub fn deploy_h2o_cluster(client: &Client, deployment: &mut Deployment) {
     let mut tokio_runtime: Runtime = tokio::runtime::Runtime::new().unwrap();
-    let ingress_api: Api<Ingress> = Api::namespaced(client.clone(), namespace);
-    let ingress = definitions::h2o_ingress(deployment_name, namespace);
-    match tokio_runtime.block_on(ingress_api.create(&PostParams::default(), &ingress)) {
-        Ok(ingress) => { deployment.ingresses.push(ingress); }
-        Err(e) => {
-            eprintln!("Unable to deploy ingress for '{}' deployment. Rewinding existing deployment. Reason: \n{:?}", deployment_name, e);
-            undeploy_h2o(client, &deployment).unwrap();
-            std::process::exit(1);
-        }
-    }
+    deploy_service(&mut tokio_runtime, client, deployment);
+    deploy_statefulset(&mut tokio_runtime, client, deployment);
+}
 
+#[inline]
+fn deploy_service(tokio_runtime: &mut Runtime, client: &Client, deployment: &mut Deployment) {
+    let service_api: Api<Service> = Api::namespaced(client.clone(), &deployment.namespace);
 
-    let service_api: Api<_> = Api::namespaced(client.clone(), namespace);
-
-    let service: Service = definitions::h2o_service(deployment_name, namespace);
+    let service: Service = definitions::h2o_service(&deployment.name, &deployment.namespace);
     match tokio_runtime.block_on(service_api.create(&PostParams::default(), &service)) {
         Ok(service) => { deployment.services.push(service); }
         Err(e) => {
-            eprintln!("Unable to deploy service for '{}' deployment. Rewinding existing deployment. Reason: \n{:?}", deployment_name, e);
-            undeploy_h2o(client, &deployment).unwrap();
+            eprintln!("Unable to deploy service for '{}' deployment. Rewinding existing deployment. Reason:\n{:?}", &deployment.name, e);
+            undeploy_h2o(&client, &deployment).unwrap();
             std::process::exit(1);
         }
-    }
+    };
+}
 
-    let statefulset_api: Api<StatefulSet> = Api::namespaced(client.clone(), namespace);
-    let stateful_set: StatefulSet = definitions::h2o_stateful_set(deployment_name, namespace, "h2oai/h2o-open-source-k8s", "latest",
-                                                                  nodes, memory_percentage, memory, num_cpu);
+#[inline]
+fn deploy_statefulset(tokio_runtime: &mut Runtime, client: &Client, deployment: &mut Deployment) {
+    let statefulset_api: Api<StatefulSet> = Api::namespaced(client.clone(), &deployment.namespace);
+    let stateful_set: StatefulSet = definitions::h2o_stateful_set(&deployment.name, &deployment.namespace, "h2oai/h2o-open-source-k8s", "latest",
+                                                                  deployment.num_nodes, deployment.memory_percentage, &deployment.memory, deployment.num_cpu);
     match tokio_runtime.block_on(statefulset_api.create(&PostParams::default(), &stateful_set)) {
         Ok(statefulset) => { deployment.stateful_sets.push(statefulset); }
         Err(e) => {
-            eprintln!("Unable to deploy service for '{}' deployment. Rewinding existing deployment. Reason: \n{:?}", deployment_name, e);
-            undeploy_h2o(client, &deployment).unwrap();
+            eprintln!("Unable to statefulset for '{}' deployment. Rewinding existing deployment. Reason:\n{:?}", &deployment.name, e);
+            undeploy_h2o(&client, &deployment).unwrap();
             std::process::exit(1);
         }
     }
-
-    return deployment;
 }
 
 pub fn undeploy_h2o(client: &Client, deployment: &Deployment) -> Result<(), Vec<String>> {
@@ -120,7 +120,7 @@ pub fn undeploy_h2o(client: &Client, deployment: &Deployment) -> Result<(), Vec<
     for ingress in deployment.ingresses.iter() {
         match tokio_runtime.block_on(api.delete(ingress.name().as_str(), &DeleteParams::default())) {
             Ok(_) => {}
-            Err(_) => { not_deleted.push(ingress.name()) }
+            Err(e) => { not_deleted.push(format!("Unable to undeploy '{}'. Reason:\n{:?}", ingress.name(), e)) }
         }
     }
 
@@ -171,7 +171,9 @@ mod tests {
         let kubeconfig_path: &Path = Path::new(&kubeconfig_location);
         assert!(kubeconfig_path.exists());
         let client: Client = super::from_kubeconfig(kubeconfig_path);
-        let deployment: Deployment = super::deploy_h2o(&client, "h2o-k8s-test-cluster", TEST_CLUSTER_NAMESPACE, 2, 50, "4Gi", 1);
+        let mut deployment: Deployment = Deployment::new("h2o-k8s-test-cluster".to_string(), TEST_CLUSTER_NAMESPACE.to_string(),
+                                                         Option::Some(kubeconfig_location), 80, "256Mi".to_string(), 2, 2);
+        super::deploy_h2o_cluster(&client, &mut deployment);
         let undeployment_result = super::undeploy_h2o(&client, &deployment);
         assert!(undeployment_result.is_ok());
     }
