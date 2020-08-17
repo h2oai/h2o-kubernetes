@@ -186,6 +186,9 @@ mod tests {
         let deployment_specification: DeploymentSpecification = DeploymentSpecification::new("h2o-k8s-test-cluster".to_string(), TEST_CLUSTER_NAMESPACE.to_string(),
                                                                                                80, "256Mi".to_string(), 2, 2, None);
         let deployment: Deployment = super::deploy_h2o_cluster(&client, deployment_specification);
+        assert_eq!(1, deployment.services.len());
+        assert_eq!(1, deployment.stateful_sets.len());
+        assert_eq!(0, deployment.ingresses.len());
         let undeployment_result = super::undeploy_h2o(&client, &deployment);
         assert!(undeployment_result.is_ok());
     }
