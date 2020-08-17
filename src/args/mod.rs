@@ -1,14 +1,79 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use clap::{App, Arg, ArgMatches, SubCommand};
+use names::Generator;
+use num::Num;
 use regex::Regex;
+
+use crate::k8s::DeploymentSpecification;
+use std::str::FromStr;
 
 const APP_NAME: &str = "H2O Kubernetes CLI";
 const APP_VERSION: &str = "0.1.0";
 
-pub fn parse_arguments<'a>() -> ArgMatches<'a> {
+
+pub fn parse_arguments() -> Command {
     let app: App = build_app();
-    return app.get_matches();
+    let args: ArgMatches = app.get_matches();
+
+    if let Some(deploy_args) = args.subcommand_matches("deploy") {
+        let deployment_name: String = extract_string(deploy_args, "name").unwrap_or_else(|| {
+            let mut generator: Generator = Generator::default();
+            return format!("h2o-{}", generator.next().unwrap());
+        });
+        // Args below have defaults, it is therefore safe to unwrap.
+        let namespace: String = extract_string(deploy_args, "namespace").unwrap();
+        let cluster_size: u32 = extract_num(deploy_args, "cluster_size").unwrap();
+        let jvm_memory_percentage: u8 = extract_num(deploy_args, "memory_percentage").unwrap();
+        let memory: String = extract_string(deploy_args, "memory").unwrap();
+        let num_cpus: u32 = extract_num(deploy_args, "cpu").unwrap();
+        let kubeconfig_path: Option<PathBuf> = match extract_string(deploy_args, "kubeconfig") {
+            None => { Option::None }
+            Some(kubeconfig) => { Some(PathBuf::from(kubeconfig)) }
+        };
+
+        let deployment: DeploymentSpecification = DeploymentSpecification::new(deployment_name, namespace, jvm_memory_percentage,
+                                                                               memory, num_cpus, cluster_size, kubeconfig_path);
+        return Command::Deployment(deployment);
+    } else if let Some(undeploy_args) = args.subcommand_matches("undeploy") {
+        match undeploy_args.value_of("file") {
+            None => { panic!("Deployment file undefined.") }
+            Some(file) => { return Command::Undeploy(PathBuf::from(file)); }
+        };
+    } else {
+        panic!("Unknown command.");
+    }
+}
+
+pub enum Command {
+    Deployment(DeploymentSpecification),
+    Undeploy(PathBuf),
+}
+
+fn extract_num<T: Num + FromStr>(args: &ArgMatches, arg_name: &str) -> Option<T> {
+    return match args.value_of(arg_name) {
+        None => {
+            Option::None
+        }
+        Some(value) => {
+            if let Ok(result) = value.parse::<T>() {
+                Option::Some(result)
+            } else {
+                panic!("Unable to parse argument '{}'. Given value: '{}'", arg_name, value)
+            }
+        }
+    };
+}
+
+fn extract_string(args: &ArgMatches, arg_name: &str) -> Option<String> {
+    return match args.value_of(arg_name) {
+        None => {
+            Option::None
+        }
+        Some(value) => {
+            Some(value.to_string())
+        }
+    };
 }
 
 fn build_app<'a>() -> App<'a, 'a> {
@@ -21,7 +86,7 @@ fn build_app<'a>() -> App<'a, 'a> {
                 .short("s")
                 .help("Number of H2O Nodes in the cluster. Up to 2^32.")
                 .number_of_values(1)
-                .validator(self::validate_greater_than_zero))
+                .validator(self::validate_int_greater_than_zero))
             .arg(Arg::with_name("kubeconfig")
                 .long("kubeconfig")
                 .short("k")
@@ -67,7 +132,7 @@ fn build_app<'a>() -> App<'a, 'a> {
                 .short("f")
                 .number_of_values(1)
                 .required(true)
-                .help("File with H2O deployment details to undeploy.")
+                .help("H2O deployment descriptor file path.")
                 .validator(self::validate_path)
             ));
 }
@@ -81,14 +146,15 @@ fn validate_path(user_provided_path: String) -> Result<(), String> {
     };
 }
 
-
-fn validate_greater_than_zero(input: String) -> Result<(), String> {
+/// Validates user input to be an integer greater than zero.
+/// Returns Result::Ok if given String  contains an integer greater than zero, otherwise Err with error message.
+fn validate_int_greater_than_zero(input: String) -> Result<(), String> {
     let number: i64 = input.parse::<i64>().unwrap();
-    if number < 1 {
-        return Result::Err("Error: The numbe provided must be greater than zero.".to_string());
+    return if number < 1 {
+        Result::Err("Error: The number provided must be greater than zero.".to_string())
     } else {
-        return Result::Ok(());
-    }
+        Result::Ok(())
+    };
 }
 
 /// Validates if user's input is a number in an expected range.
@@ -98,11 +164,11 @@ fn validate_greater_than_zero(input: String) -> Result<(), String> {
 ///
 fn validate_percentage(input: String) -> Result<(), String> {
     let number: i64 = input.parse::<i64>().unwrap();
-    if number < 0 || number > 100 {
-        return Result::Err(format!("Error: The number must be withing range <{},{}>.", 0, 100));
+    return if number < 0 || number > 100 {
+        Result::Err(format!("Error: The number must be withing range <{},{}>.", 0, 100))
     } else {
-        return Result::Ok(());
-    }
+        Result::Ok(())
+    };
 }
 
 const MEMORY_PATTERN: &str = "^([+-]?[0-9.]+)([eEinumkKMGTP]*[-+]?[0-9]*)$";
@@ -111,11 +177,11 @@ const MEMORY_PATTERN: &str = "^([+-]?[0-9.]+)([eEinumkKMGTP]*[-+]?[0-9]*)$";
 fn validate_memory(input: String) -> Result<(), String> {
     let memory_regexp = Regex::new(MEMORY_PATTERN).unwrap();
 
-    if memory_regexp.is_match(&input) {
-        return Result::Ok(());
+    return if memory_regexp.is_match(&input) {
+        Result::Ok(())
     } else {
-        return Result::Err(format!("Memory requirement must match the following pattern: {}. For example 1Gi or 1024Mi.", MEMORY_PATTERN));
-    }
+        Result::Err(format!("Memory requirement must match the following pattern: {}. For example 1Gi or 1024Mi.", MEMORY_PATTERN))
+    };
 }
 
 

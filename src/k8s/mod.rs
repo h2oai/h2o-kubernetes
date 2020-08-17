@@ -1,7 +1,7 @@
 extern crate futures;
 extern crate kube;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use k8s_openapi::api::apps::v1::StatefulSet;
 use k8s_openapi::api::core::v1::Service;
@@ -25,10 +25,14 @@ pub fn from_kubeconfig(kubeconfig_path: &Path) -> Client {
 }
 
 pub fn try_default() -> Result<Client, Error> {
-    block_on(Client::try_default())
+    if let Some(openshift_kubeconfig_path) = find_openshift_kubeconfig() {
+        return Ok(from_kubeconfig(openshift_kubeconfig_path.as_path()));
+    } else {
+        block_on(Client::try_default())
+    }
 }
 
-pub fn try_openshift_kubeconfig() -> Option<String> {
+fn find_openshift_kubeconfig() -> Option<PathBuf> {
     match dirs::home_dir() {
         None => { Option::None }
         Some(mut path) => {
@@ -37,7 +41,7 @@ pub fn try_openshift_kubeconfig() -> Option<String> {
             return if !path.exists() {
                 Option::None
             } else {
-                Some(String::from(path.to_str().unwrap()))
+                Some(path)
             };
         }
     }
@@ -45,51 +49,59 @@ pub fn try_openshift_kubeconfig() -> Option<String> {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Deployment {
-    pub name: String,
-    pub namespace: String,
-    pub memory_percentage: u8,
-    pub memory: String,
-    pub num_cpu: u32,
-    pub num_nodes: u32,
-    pub kubeconfig_path: Option<String>,
+    pub specification: DeploymentSpecification,
     pub ingresses: Vec<Ingress>,
     pub stateful_sets: Vec<StatefulSet>,
     pub services: Vec<Service>,
 }
 
 impl Deployment {
-    pub fn new(name: String, namespace: String, kubeconfig_path: Option<String>, memory_percentage: u8, memory: String, num_cpu: u32,
-               num_nodes: u32) -> Deployment {
-        return Deployment {
-            name: name,
-            namespace: namespace,
-            memory_percentage: memory_percentage,
-            memory: memory,
-            num_cpu: num_cpu,
-            num_nodes: num_nodes,
-            kubeconfig_path: kubeconfig_path,
-            ingresses: Vec::new(),
-            stateful_sets: Vec::new(),
-            services: Vec::new(),
-        };
+    pub fn new(specification: DeploymentSpecification) -> Self {
+        Deployment { specification, services: vec!(), ingresses: vec!(), stateful_sets: vec!() }
     }
 }
 
-pub fn deploy_h2o_cluster(client: &Client, deployment: &mut Deployment) {
+/// Deployment as described by the user. No value is mandatory, as the set of required user inputs
+/// and defaults might change over time and the dependent layers are forced to make no assumptions about which values
+/// are actually present.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct DeploymentSpecification {
+    pub name: String,
+    pub namespace: String,
+    pub memory_percentage: u8,
+    pub memory: String,
+    pub num_cpu: u32,
+    pub num_h2o_nodes: u32,
+    pub kubeconfig_path: Option<PathBuf>,
+}
+
+impl DeploymentSpecification {
+    pub fn new(name: String, namespace: String, memory_percentage: u8, memory: String, num_cpu: u32, num_h2o_nodes: u32, kubeconfig_path: Option<PathBuf>) -> Self {
+        DeploymentSpecification { name, namespace, memory_percentage, memory, num_cpu, num_h2o_nodes, kubeconfig_path }
+    }
+}
+
+pub fn deploy_h2o_cluster(client: &Client, deployment_specification: DeploymentSpecification) -> Deployment {
     let mut tokio_runtime: Runtime = tokio::runtime::Runtime::new().unwrap();
-    deploy_service(&mut tokio_runtime, client, deployment);
-    deploy_statefulset(&mut tokio_runtime, client, deployment);
+    let mut deployment: Deployment = Deployment::new(deployment_specification);
+
+    deploy_service(&mut tokio_runtime, client, &mut deployment);
+    deploy_statefulset(&mut tokio_runtime, client, &mut deployment);
+
+    return deployment;
 }
 
 #[inline]
 fn deploy_service(tokio_runtime: &mut Runtime, client: &Client, deployment: &mut Deployment) {
-    let service_api: Api<Service> = Api::namespaced(client.clone(), &deployment.namespace);
+    let service_api: Api<Service> = Api::namespaced(client.clone(), &deployment.specification.namespace);
 
-    let service: Service = definitions::h2o_service(&deployment.name, &deployment.namespace);
+    let service: Service = definitions::h2o_service(&deployment.specification.name, &deployment.specification.namespace);
     match tokio_runtime.block_on(service_api.create(&PostParams::default(), &service)) {
-        Ok(service) => { deployment.services.push(service); }
+        Ok(service) => {
+            deployment.services.push(service);
+        }
         Err(e) => {
-            eprintln!("Unable to deploy service for '{}' deployment. Rewinding existing deployment. Reason:\n{:?}", &deployment.name, e);
+            eprintln!("Unable to deploy service for '{}' deployment. Rewinding existing deployment. Reason:\n{:?}", &deployment.specification.name, e);
             undeploy_h2o(&client, &deployment).unwrap();
             std::process::exit(1);
         }
@@ -98,13 +110,13 @@ fn deploy_service(tokio_runtime: &mut Runtime, client: &Client, deployment: &mut
 
 #[inline]
 fn deploy_statefulset(tokio_runtime: &mut Runtime, client: &Client, deployment: &mut Deployment) {
-    let statefulset_api: Api<StatefulSet> = Api::namespaced(client.clone(), &deployment.namespace);
-    let stateful_set: StatefulSet = definitions::h2o_stateful_set(&deployment.name, &deployment.namespace, "h2oai/h2o-open-source-k8s", "latest",
-                                                                  deployment.num_nodes, deployment.memory_percentage, &deployment.memory, deployment.num_cpu);
+    let statefulset_api: Api<StatefulSet> = Api::namespaced(client.clone(), &deployment.specification.namespace);
+    let stateful_set: StatefulSet = definitions::h2o_stateful_set(&deployment.specification.name, &deployment.specification.namespace, "h2oai/h2o-open-source-k8s", "latest",
+                                                                  deployment.specification.num_h2o_nodes, deployment.specification.memory_percentage, &deployment.specification.memory, deployment.specification.num_cpu);
     match tokio_runtime.block_on(statefulset_api.create(&PostParams::default(), &stateful_set)) {
         Ok(statefulset) => { deployment.stateful_sets.push(statefulset); }
         Err(e) => {
-            eprintln!("Unable to statefulset for '{}' deployment. Rewinding existing deployment. Reason:\n{:?}", &deployment.name, e);
+            eprintln!("Unable to statefulset for '{}' deployment. Rewinding existing deployment. Reason:\n{:?}", &deployment.specification.name, e);
             undeploy_h2o(&client, &deployment).unwrap();
             std::process::exit(1);
         }
@@ -113,7 +125,7 @@ fn deploy_statefulset(tokio_runtime: &mut Runtime, client: &Client, deployment: 
 
 pub fn undeploy_h2o(client: &Client, deployment: &Deployment) -> Result<(), Vec<String>> {
     let mut tokio_runtime: Runtime = tokio::runtime::Runtime::new().unwrap();
-    let namespace: &str = deployment.namespace.as_str();
+    let namespace: &str = deployment.specification.namespace.as_str();
     let mut not_deleted: Vec<String> = vec!();
 
     let api: Api<Ingress> = Api::namespaced(client.clone(), namespace);
@@ -152,7 +164,7 @@ pub fn undeploy_h2o(client: &Client, deployment: &Deployment) -> Result<(), Vec<
 mod tests {
     use std::path::Path;
 
-    use crate::k8s::Deployment;
+    use crate::k8s::{Deployment, DeploymentSpecification};
     use crate::tests::{kubeconfig_location_panic, TEST_CLUSTER_NAMESPACE};
 
     use super::kube::Client;
@@ -171,9 +183,9 @@ mod tests {
         let kubeconfig_path: &Path = Path::new(&kubeconfig_location);
         assert!(kubeconfig_path.exists());
         let client: Client = super::from_kubeconfig(kubeconfig_path);
-        let mut deployment: Deployment = Deployment::new("h2o-k8s-test-cluster".to_string(), TEST_CLUSTER_NAMESPACE.to_string(),
-                                                         Option::Some(kubeconfig_location), 80, "256Mi".to_string(), 2, 2);
-        super::deploy_h2o_cluster(&client, &mut deployment);
+        let deployment_specification: DeploymentSpecification = DeploymentSpecification::new("h2o-k8s-test-cluster".to_string(), TEST_CLUSTER_NAMESPACE.to_string(),
+                                                                                               80, "256Mi".to_string(), 2, 2, None);
+        let deployment: Deployment = super::deploy_h2o_cluster(&client, deployment_specification);
         let undeployment_result = super::undeploy_h2o(&client, &deployment);
         assert!(undeployment_result.is_ok());
     }
