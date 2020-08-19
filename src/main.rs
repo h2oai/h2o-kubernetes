@@ -43,7 +43,7 @@ fn deploy(deployment_specification: DeploymentSpecification) {
         }
     };
 
-    println!("{}.h2ok", deployment.specification.name);
+    print!("{}.h2ok", deployment.specification.name);
     persist_deployment(&deployment);
 }
 

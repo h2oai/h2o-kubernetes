@@ -77,14 +77,15 @@ fn test_undeploy_help() {
 Undeploys an existing H2O cluster from Kubernetes
 
 USAGE:
-    h2ok undeploy --file <file>
+    h2ok undeploy \[OPTIONS\]
 
 FLAGS:
     -h, --help       Prints help information
     -V, --version    Prints version information
 
 OPTIONS:
-    -f, --file <file>    H2O deployment descriptor file path\.
+    -f, --file <file>    H2O deployment descriptor file path\. If not specified, attempt is made to parse deployment
+                         descriptor path from stdin\.
 "#;
 
     assert.success()
@@ -94,24 +95,50 @@ OPTIONS:
 
 
 #[test]
-fn test_deploy_undeploy(){
-        let mut deploy_cmd = Command::cargo_bin("h2ok").unwrap();
-        let assert_deploy: Assert = deploy_cmd.args(&["deploy", "--cluster_size", "1", "--kubeconfig", env!("KUBECONFIG")])
-            .assert();
+fn test_deploy_undeploy() {
+    let mut deploy_cmd = Command::cargo_bin("h2ok").unwrap();
+    let assert_deploy: Assert = deploy_cmd.args(&["deploy", "--cluster_size", "1", "--kubeconfig", env!("KUBECONFIG")])
+        .assert();
 
-        let output = assert_deploy.success()
-            .code(0)
-            .stdout(predicates::str::is_match(".*\\.h2ok").unwrap())
-            .get_output().clone().stdout;
+    let output = assert_deploy.success()
+        .code(0)
+        .stdout(predicates::str::is_match(".*\\.h2ok").unwrap())
+        .get_output().clone().stdout;
 
-        let deployment_filename = format!("{}/{}",env!("CARGO_MANIFEST_DIR"),String::from_utf8(output).unwrap().trim());
+    let deployment_filename = format!("{}/{}", env!("CARGO_MANIFEST_DIR"), String::from_utf8(output).unwrap().trim());
 
-        let mut undeploy_cmd = Command::cargo_bin("h2ok").unwrap();
-        let assert_undeploy: Assert = undeploy_cmd.args(&["undeploy", "-f", &deployment_filename])
-            .assert();
+    let mut undeploy_cmd = Command::cargo_bin("h2ok").unwrap();
+    let assert_undeploy: Assert = undeploy_cmd.args(&["undeploy", "-f", &deployment_filename])
+        .assert();
 
-        assert_undeploy.success()
-            .code(0)
-            .stdout(predicates::str::is_match("Removed deployment 'h2o-\\.*").unwrap());
+    assert_undeploy.success()
+        .code(0)
+        .stdout(predicates::str::is_match("Removed deployment 'h2o-\\.*").unwrap());
+}
 
+/// Test if output of `deploy` command is properly accepted by the `undeploy` command.
+/// Output of `deploy` command (if successful) is filename of the deployment descriptor persisted.
+#[test]
+fn test_undeploy_piping() {
+    let mut deploy_cmd = Command::cargo_bin("h2ok").unwrap();
+    let assert_deploy: Assert = deploy_cmd.args(&["deploy", "--cluster_size", "1", "--kubeconfig", env!("KUBECONFIG")])
+        .assert();
+
+    let output = assert_deploy.success()
+        .code(0)
+        .stdout(predicates::str::is_match(".*\\.h2ok").unwrap())
+        .get_output().clone().stdout;
+
+    let deployment_filename = String::from_utf8(output).unwrap();
+
+    let mut undeploy_cmd = Command::cargo_bin("h2ok")
+        .unwrap();
+    undeploy_cmd.write_stdin(deployment_filename);
+
+    let assert_undeploy: Assert = undeploy_cmd.args(&["undeploy"])
+        .assert();
+
+    assert_undeploy.success()
+        .code(0)
+        .stdout(predicates::str::is_match("Removed deployment 'h2o-\\.*").unwrap());
 }

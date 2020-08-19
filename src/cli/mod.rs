@@ -7,6 +7,8 @@ use regex::Regex;
 
 use crate::k8s::DeploymentSpecification;
 use std::str::FromStr;
+use std::io;
+use std::io::Read;
 
 const APP_NAME: &str = "H2O Kubernetes CLI";
 const APP_VERSION: &str = "0.1.0";
@@ -37,8 +39,31 @@ pub fn get_command() -> Command {
         return Command::Deployment(deployment);
     } else if let Some(undeploy_args) = args.subcommand_matches("undeploy") {
         match undeploy_args.value_of("file") {
-            None => { panic!("Deployment file undefined.") }
-            Some(file) => { return Command::Undeploy(PathBuf::from(file)); }
+            None => {
+                // If there is no file passed as an argument, try to parse file name from stdin.
+                let mut deployment_path_stdin_buf = String::new();
+                io::stdin().read_to_string(&mut deployment_path_stdin_buf).unwrap();
+                if deployment_path_stdin_buf.len() == 0 {
+                    panic!("Deployment file undefined.")
+                }
+                let deployment_descriptor_path: PathBuf = PathBuf::from(&deployment_path_stdin_buf);
+                if deployment_descriptor_path.exists() {
+                    return Command::Undeploy(deployment_descriptor_path);
+                } else {
+                    let mut pwd_relative_path: PathBuf = std::env::current_dir().unwrap();
+                    pwd_relative_path.push(deployment_descriptor_path);
+
+                    if pwd_relative_path.exists() && pwd_relative_path.is_file() {
+                        println!("{}", pwd_relative_path.to_str().unwrap());
+                        return Command::Undeploy(pwd_relative_path);
+                    } else {
+                        panic!("Unable to reach deployment file: {}", &deployment_path_stdin_buf);
+                    }
+                }
+            }
+            Some(file) => {
+                return Command::Undeploy(PathBuf::from(file));
+            }
         };
     } else {
         panic!("Unknown command.");
@@ -141,8 +166,7 @@ fn build_app<'a>() -> App<'a, 'a> {
                 .long("file")
                 .short("f")
                 .number_of_values(1)
-                .required(true)
-                .help("H2O deployment descriptor file path.")
+                .help("H2O deployment descriptor file path. If not specified, attempt is made to parse deployment descriptor path from stdin.")
                 .validator(self::validate_path)
             ));
 }
