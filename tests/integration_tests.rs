@@ -7,7 +7,7 @@ fn test_general_help() {
     let assert: Assert = cmd.arg("-h")
         .assert();
 
-    let expected_output_pattern: &str = r#"H2O Kubernetes CLI 0.1.0
+    let expected_output_pattern: &str = r#"H2O Kubernetes CLI \d+.\d+.\d+.*
 
 USAGE:
     h2ok \[SUBCOMMAND\]
@@ -17,9 +17,11 @@ FLAGS:
     -V, --version    Prints version information
 
 SUBCOMMANDS:
-    deploy.*
-    help.*
-    undeploy.*"#;
+    deploy      Deploys an H2O cluster into Kubernetes. Once successfully deployed a deployment descriptor file with
+                cluster name is saved.Such a file can be used to undeploy the cluster or built on top of by adding
+                additional services.*
+    help        Prints this message or the help of the given subcommand\(s\).*
+    undeploy    Undeploys an existing H2O cluster from Kubernetes"#;
 
     assert.success()
         .code(0)
@@ -33,6 +35,8 @@ fn test_deployment_help() {
         .assert();
 
     let expected_output_pattern: &str = r#"h2ok-deploy.*
+Deploys an H2O cluster into Kubernetes\. Once successfully deployed a deployment descriptor file with cluster name is
+saved\.Such a file can be used to undeploy the cluster or built on top of by adding additional services\.
 
 USAGE:
     h2ok deploy \[OPTIONS\] --cluster_size <cluster_size>
@@ -44,7 +48,9 @@ FLAGS:
 OPTIONS:
     -s, --cluster_size <cluster_size>              Number of H2O Nodes in the cluster. Up to 2\^32.
         --cpus <cpus>                              Number of CPUs allocated for each H2O node. \[default: 1\]
-    -k, --kubeconfig <kubeconfig>                  Path to 'kubeconfig' yaml file.
+    -k, --kubeconfig <kubeconfig>
+            Path to 'kubeconfig' yaml file\. If not specified, well-known locations are scanned for kubeconfig\.
+
     -m, --memory <memory>
             Amount of memory allocated by each H2O node - in a format accepted by K8S, e.g. 4Gi. \[default: 1Gi\]
 
@@ -54,8 +60,7 @@ OPTIONS:
     -c, --cluster_name <name>
             Name of the H2O cluster deployment. Used as prefix for K8S entities. Generated if not specified.
 
-    -n, --namespace <namespace>                    Kubernetes cluster namespace to connect to. \[default: default\]
-"#;
+    -n, --namespace <namespace>                    Kubernetes cluster namespace to connect to. \[default: default\]"#;
 
     assert.success()
         .code(0)
@@ -69,6 +74,7 @@ fn test_undeploy_help() {
         .assert();
 
     let expected_output_pattern: &str = r#"h2ok-undeploy.*
+Undeploys an existing H2O cluster from Kubernetes
 
 USAGE:
     h2ok undeploy --file <file>
