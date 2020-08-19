@@ -6,23 +6,36 @@ A command-line tool to ease deployment (and undeployment) of H2O open-source mac
 
 ![H2O Usage in console](h2ok.gif)
 
-## The future plans
-- Usable from within of Kubernetes using in-container environment variables and kubernetes-provided kubeconfig.
-- Define version of H2O to deploy
-- Custom H2O-3 docker image & custom repository
-- Support deployment of the whole machine learning toolkint for easy bootstrap, e.g. deploy Jupyter notebook and expose it.
-- External XGBoost support
-- Custom memory settings of default Docker image used.
-
-Goal is to provide a fully configurable tool with reasonable defaults for everyday use.
-
 ## Usage
-
-`h2ok deploy --namespace default --kubeconfig /etc/rancher/k3s/k3s.yaml` deploys H2O-3 to a Kubernetes cluster defined in the provided `kubeconfig` file. The `namespace` option defaults to namespace.
-
 Type `h2ok --help` for an overview of available subcommands. Use the `--help` or `-h` flag in combination with any of the subcommands to receive help for those subcommands, for example `h2ok deploy -h`.
 
+There are two basic commands:
+1. `h2ok deploy`,
+1. `h2ok undeploy`.
+
+### Deploy
+Deploys an H2O cluster into Kubernetes by creating all the necessary components. Once successfully deployed a deployment descriptor file with cluster name is saved. Such a file can be used to undeploy the H2O cluster or built on top of by adding additional services.
+If deployment of any of the component fails a rollback of existing components is attempted automatically.
+ 
+**Mininal example**: `h2ok deploy --cluster-size 3`.
+**Minimal example - custom kubeconfig and namespace**: `h2ok deploy --cluster-size 3 --kubeconfig /etc/rancher/k3s/k3s.yaml --namespace default`
+The `namespace` option defaults to namespace. If `kubeconfig` is not defined, well-known locations and environment variables are searched.
+
 After each deployment is done, a file with cluster's name and an `.h2ok` suffix is saved to the working directory. Such a file serves as a descriptor of the deployment done and may later be used by `h2ok undeploy -f h2o-deployment-name.h2ok` to automatically undeploy the whole H2O cluster from Kubernetes.
+
+### Undeploy
+Undeploys existing deployment from a Kubernetes cluster using deployment descriptor generated during deployment operations.
+
+**Minimal example**: `h2ok undeploy -f h2ok-deployment-name.h2ok`
+
+## The future plans
+- Support deployment of the whole machine learning toolkit for easy bootstrap, e.g. deploy Jupyter notebook and expose it.
+   Currently, only basic H2O-3 deployment is supported.
+- Define version of H2O to deploy
+- Custom H2O-3 docker image & custom repository
+- External XGBoost support
+
+Goal is to provide a fully configurable tool with reasonable defaults for everyday use.
 
 ## Building, testing and running
 
