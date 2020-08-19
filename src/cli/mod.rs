@@ -11,8 +11,8 @@ use std::str::FromStr;
 const APP_NAME: &str = "H2O Kubernetes CLI";
 const APP_VERSION: &str = "0.1.0";
 
-
-pub fn parse_arguments() -> Command {
+/// Extracts user-provided arguments and builds a `Command` out of user input.
+pub fn get_command() -> Command {
     let app: App = build_app();
     let args: ArgMatches = app.get_matches();
 
@@ -45,11 +45,14 @@ pub fn parse_arguments() -> Command {
     }
 }
 
+/// Commands issuable by the user.
 pub enum Command {
     Deployment(DeploymentSpecification),
     Undeploy(PathBuf),
 }
 
+/// Attempts to extract/parse a number from user-given argument. If the user did not provide
+/// any value or the value has not default, returns Option::None. Panics if the argument can not be parsed.
 fn extract_num<T: Num + FromStr>(args: &ArgMatches, arg_name: &str) -> Option<T> {
     return match args.value_of(arg_name) {
         None => {
@@ -65,6 +68,8 @@ fn extract_num<T: Num + FromStr>(args: &ArgMatches, arg_name: &str) -> Option<T>
     };
 }
 
+/// Attempts to extract/parse a string from user-given argument. If the user did not provide
+/// any value or the value has not default, returns Option::None. Panics if the argument can not be parsed.
 fn extract_string(args: &ArgMatches, arg_name: &str) -> Option<String> {
     return match args.value_of(arg_name) {
         None => {
@@ -76,6 +81,8 @@ fn extract_string(args: &ArgMatches, arg_name: &str) -> Option<String> {
     };
 }
 
+/// Contains definition of all commands, arguments, flags and the respective default values and descriptions
+/// This is the only source of truth for user-facing CLI.
 fn build_app<'a>() -> App<'a, 'a> {
     return App::new(APP_NAME)
         .version(APP_VERSION)

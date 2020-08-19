@@ -15,7 +15,7 @@ mod k8s;
 mod tests;
 
 fn main() {
-    match cli::parse_arguments() {
+    match cli::get_command() {
         Command::Deployment(deployment) => {
             deploy(deployment);
         }
