@@ -26,7 +26,7 @@ pub fn parse_arguments() -> Command {
         let cluster_size: u32 = extract_num(deploy_args, "cluster_size").unwrap();
         let jvm_memory_percentage: u8 = extract_num(deploy_args, "memory_percentage").unwrap();
         let memory: String = extract_string(deploy_args, "memory").unwrap();
-        let num_cpus: u32 = extract_num(deploy_args, "cpu").unwrap();
+        let num_cpus: u32 = extract_num(deploy_args, "cpus").unwrap();
         let kubeconfig_path: Option<PathBuf> = match extract_string(deploy_args, "kubeconfig") {
             None => { Option::None }
             Some(kubeconfig) => { Some(PathBuf::from(kubeconfig)) }
@@ -104,7 +104,7 @@ fn build_app<'a>() -> App<'a, 'a> {
             .arg(Arg::with_name("name")
                 .long("cluster_name")
                 .short("c")
-                .help("Name of the H2O cluster deployment. Used as prefix for K8S entities.")
+                .help("Name of the H2O cluster deployment. Used as prefix for K8S entities. Generated if not specified.")
                 .number_of_values(1))
             .arg(Arg::with_name("memory_percentage")
                 .long("memory_percentage")
@@ -117,13 +117,13 @@ fn build_app<'a>() -> App<'a, 'a> {
                 .short("m")
                 .number_of_values(1)
                 .default_value("1Gi")
-                .help("Amount of memory allocated by each H2O instance - in a format accepted by K8S, e.g. 4Gi.")
+                .help("Amount of memory allocated by each H2O node - in a format accepted by K8S, e.g. 4Gi.")
                 .validator(self::validate_memory))
             .arg(Arg::with_name("cpus")
                 .long("cpus")
                 .number_of_values(1)
                 .default_value("1")
-                .help("Number of CPUs allocated for each H2O instance.")
+                .help("Number of CPUs allocated for each H2O node.")
             )
         )
         .subcommand(SubCommand::with_name("undeploy")

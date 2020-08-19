@@ -25,26 +25,7 @@ pub fn from_kubeconfig(kubeconfig_path: &Path) -> Client {
 }
 
 pub fn try_default() -> Result<Client, Error> {
-    if let Some(openshift_kubeconfig_path) = find_openshift_kubeconfig() {
-        return Ok(from_kubeconfig(openshift_kubeconfig_path.as_path()));
-    } else {
         block_on(Client::try_default())
-    }
-}
-
-fn find_openshift_kubeconfig() -> Option<PathBuf> {
-    match dirs::home_dir() {
-        None => { Option::None }
-        Some(mut path) => {
-            // OpenShift default config location in user's home folder. This is there `oc` tool saves kubeconfig after `oc login`.
-            path.push(".kube/config");
-            return if !path.exists() {
-                Option::None
-            } else {
-                Some(path)
-            };
-        }
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -61,17 +42,23 @@ impl Deployment {
     }
 }
 
-/// Deployment as described by the user. No value is mandatory, as the set of required user inputs
-/// and defaults might change over time and the dependent layers are forced to make no assumptions about which values
-/// are actually present.
+/// Deployment as specified by the user. Not all values might be explicitly inserted by the user,
+/// some might originate from defaults - it is assumed user willingly chose the defaults.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DeploymentSpecification {
+    /// Name of the deployment. If not provided by the user, the value is randomly generated.
     pub name: String,
+    /// Namespace to deploy to.
     pub namespace: String,
+    /// Memory percentage to allocate by the JVM running H2O inside the docker container.
     pub memory_percentage: u8,
+    /// Total memory for each H2O node. Effectively a pod memory request and limit.
     pub memory: String,
+    /// Number of CPUs allocated for each H2O node. Effectively a pod CPU request and limit.
     pub num_cpu: u32,
+    /// Total count of H2O nodes inside the cluster created.
     pub num_h2o_nodes: u32,
+    /// Kubeconfig - provided optionally. There are well-known standardized locations to look for Kubeconfig, therefore optional.
     pub kubeconfig_path: Option<PathBuf>,
 }
 
@@ -166,7 +153,6 @@ mod tests {
 
     use crate::k8s::{Deployment, DeploymentSpecification};
     use crate::tests::{kubeconfig_location_panic, TEST_CLUSTER_NAMESPACE};
-
     use super::kube::Client;
 
     #[test]
@@ -184,7 +170,7 @@ mod tests {
         assert!(kubeconfig_path.exists());
         let client: Client = super::from_kubeconfig(kubeconfig_path);
         let deployment_specification: DeploymentSpecification = DeploymentSpecification::new("h2o-k8s-test-cluster".to_string(), TEST_CLUSTER_NAMESPACE.to_string(),
-                                                                                               80, "256Mi".to_string(), 2, 2, None);
+                                                                                             80, "256Mi".to_string(), 2, 2, None);
         let deployment: Deployment = super::deploy_h2o_cluster(&client, deployment_specification);
         assert_eq!(1, deployment.services.len());
         assert_eq!(1, deployment.stateful_sets.len());

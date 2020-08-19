@@ -2,7 +2,7 @@ extern crate clap;
 
 use std::fs::{File, remove_file};
 use std::io::Write;
-use std::path::{Path};
+use std::path::Path;
 
 use kube::{Client, Error};
 
@@ -38,19 +38,29 @@ fn deploy(deployment_specification: DeploymentSpecification) {
 
     let deployment: Deployment = k8s::deploy_h2o_cluster(&client, deployment_specification);
 
-    println!("Finished deployment of '{}' cluster.", deployment.specification.name);
+    println!("{}.h2ok", deployment.specification.name);
     persist_deployment(&deployment);
 }
 
 fn undeploy(deployment_descriptor_path: &Path) {
     let deployment_file = File::open(deployment_descriptor_path).unwrap();
     let deployment: Deployment = serde_json::from_reader(deployment_file).unwrap();
-    let client: Client = k8s::from_kubeconfig(&deployment.specification.kubeconfig_path.clone().unwrap());
+
+    // Attempt to use the very same kubeconfig to undeploy as was used to deploy
+    let client: Client = match &deployment.specification.kubeconfig_path {
+        None => {
+            // No kubeconfig specified means the one from the environment should be used.
+            k8s::try_default().unwrap()
+        }
+        Some(kubeconfig_path) => {
+            k8s::from_kubeconfig(kubeconfig_path)
+        }
+    };
     match k8s::undeploy_h2o(&client, &deployment) {
         Ok(_) => {}
         Err(deployment_errs) => {
             for undeployed in deployment_errs.iter() {
-                println!("Unable to undeploy '{}' - skipping.", undeployed)
+                print!("Unable to undeploy '{}' - skipping.", undeployed)
             }
         }
     }
