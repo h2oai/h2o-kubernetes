@@ -25,9 +25,11 @@ pub fn from_kubeconfig(kubeconfig_path: &Path) -> Client {
 }
 
 pub fn try_default() -> Result<Client, Error> {
-        block_on(Client::try_default())
+    block_on(Client::try_default())
 }
 
+/// Deployment descriptor - contains deployment specification as defined by the user/called
+/// and list if Kubernetes entities deployed, if any.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Deployment {
     pub specification: DeploymentSpecification,
@@ -37,6 +39,7 @@ pub struct Deployment {
 }
 
 impl Deployment {
+    /// Deployment might contain a specification, yet it might not contain any deployed units yet.
     pub fn new(specification: DeploymentSpecification) -> Self {
         Deployment { specification, services: vec!(), ingresses: vec!(), stateful_sets: vec!() }
     }
@@ -68,44 +71,49 @@ impl DeploymentSpecification {
     }
 }
 
-pub fn deploy_h2o_cluster(client: &Client, deployment_specification: DeploymentSpecification) -> Deployment {
+/// Deploys an H2O cluster using the given `client` and `deployment_specification`.
+/// If there is any error during the deployment of any component (stateful set, service, etc.),
+/// the deployment is rolled back - components already deployed are undeployed.
+pub fn deploy_h2o_cluster(client: &Client, deployment_specification: DeploymentSpecification) -> Result<Deployment, Error> {
     let mut tokio_runtime: Runtime = tokio::runtime::Runtime::new().unwrap();
     let mut deployment: Deployment = Deployment::new(deployment_specification);
 
-    deploy_service(&mut tokio_runtime, client, &mut deployment);
-    deploy_statefulset(&mut tokio_runtime, client, &mut deployment);
+    deployment.services.push(deploy_service(&mut tokio_runtime, client, &deployment)?);
+    deployment.stateful_sets.push(deploy_statefulset(&mut tokio_runtime, client, &deployment)?);
 
-    return deployment;
+    return Ok(deployment);
 }
 
 #[inline]
-fn deploy_service(tokio_runtime: &mut Runtime, client: &Client, deployment: &mut Deployment) {
+fn deploy_service(tokio_runtime: &mut Runtime, client: &Client, deployment: &Deployment) -> Result<Service, Error> {
     let service_api: Api<Service> = Api::namespaced(client.clone(), &deployment.specification.namespace);
 
     let service: Service = definitions::h2o_service(&deployment.specification.name, &deployment.specification.namespace);
-    match tokio_runtime.block_on(service_api.create(&PostParams::default(), &service)) {
+    return match tokio_runtime.block_on(service_api.create(&PostParams::default(), &service)) {
         Ok(service) => {
-            deployment.services.push(service);
+            Ok(service)
         }
         Err(e) => {
             eprintln!("Unable to deploy service for '{}' deployment. Rewinding existing deployment. Reason:\n{:?}", &deployment.specification.name, e);
             undeploy_h2o(&client, &deployment).unwrap();
-            std::process::exit(1);
+            Err(e)
         }
     };
 }
 
 #[inline]
-fn deploy_statefulset(tokio_runtime: &mut Runtime, client: &Client, deployment: &mut Deployment) {
+fn deploy_statefulset(tokio_runtime: &mut Runtime, client: &Client, deployment: &Deployment) -> Result<StatefulSet, Error> {
     let statefulset_api: Api<StatefulSet> = Api::namespaced(client.clone(), &deployment.specification.namespace);
     let stateful_set: StatefulSet = definitions::h2o_stateful_set(&deployment.specification.name, &deployment.specification.namespace, "h2oai/h2o-open-source-k8s", "latest",
                                                                   deployment.specification.num_h2o_nodes, deployment.specification.memory_percentage, &deployment.specification.memory, deployment.specification.num_cpu);
-    match tokio_runtime.block_on(statefulset_api.create(&PostParams::default(), &stateful_set)) {
-        Ok(statefulset) => { deployment.stateful_sets.push(statefulset); }
+    return match tokio_runtime.block_on(statefulset_api.create(&PostParams::default(), &stateful_set)) {
+        Ok(statefulset) => {
+            Result::Ok(statefulset)
+        }
         Err(e) => {
             eprintln!("Unable to statefulset for '{}' deployment. Rewinding existing deployment. Reason:\n{:?}", &deployment.specification.name, e);
             undeploy_h2o(&client, &deployment).unwrap();
-            std::process::exit(1);
+            Result::Err(e)
         }
     }
 }

@@ -36,7 +36,12 @@ fn deploy(deployment_specification: DeploymentSpecification) {
         }
     };
 
-    let deployment: Deployment = k8s::deploy_h2o_cluster(&client, deployment_specification);
+    let deployment: Deployment = match k8s::deploy_h2o_cluster(&client, deployment_specification) {
+        Ok(successful_deployment) => { successful_deployment }
+        Err(error) => {
+            panic!("Unable to deploy H2O cluster. Error:\n{}", error);
+        }
+    };
 
     println!("{}.h2ok", deployment.specification.name);
     persist_deployment(&deployment);
