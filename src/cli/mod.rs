@@ -8,7 +8,7 @@ use regex::Regex;
 use crate::k8s::DeploymentSpecification;
 use std::str::FromStr;
 
-const APP_NAME: &str = "H2O Kubernetes cli";
+const APP_NAME: &str = "H2O Kubernetes CLI";
 const APP_VERSION: &str = "0.1.0";
 
 
