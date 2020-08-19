@@ -15,7 +15,7 @@ use self::kube::{Api, Config, Error};
 use self::kube::api::{DeleteParams, Meta, PostParams};
 use self::kube::config::{Kubeconfig, KubeConfigOptions};
 
-mod definitions;
+mod templates;
 
 pub fn from_kubeconfig(kubeconfig_path: &Path) -> Client {
     let kubeconfig: Kubeconfig = Kubeconfig::read_from(kubeconfig_path).unwrap();
@@ -88,7 +88,7 @@ pub fn deploy_h2o_cluster(client: &Client, deployment_specification: DeploymentS
 fn deploy_service(tokio_runtime: &mut Runtime, client: &Client, deployment: &Deployment) -> Result<Service, Error> {
     let service_api: Api<Service> = Api::namespaced(client.clone(), &deployment.specification.namespace);
 
-    let service: Service = definitions::h2o_service(&deployment.specification.name, &deployment.specification.namespace);
+    let service: Service = templates::h2o_service(&deployment.specification.name, &deployment.specification.namespace);
     return match tokio_runtime.block_on(service_api.create(&PostParams::default(), &service)) {
         Ok(service) => {
             Ok(service)
@@ -104,8 +104,8 @@ fn deploy_service(tokio_runtime: &mut Runtime, client: &Client, deployment: &Dep
 #[inline]
 fn deploy_statefulset(tokio_runtime: &mut Runtime, client: &Client, deployment: &Deployment) -> Result<StatefulSet, Error> {
     let statefulset_api: Api<StatefulSet> = Api::namespaced(client.clone(), &deployment.specification.namespace);
-    let stateful_set: StatefulSet = definitions::h2o_stateful_set(&deployment.specification.name, &deployment.specification.namespace, "h2oai/h2o-open-source-k8s", "latest",
-                                                                  deployment.specification.num_h2o_nodes, deployment.specification.memory_percentage, &deployment.specification.memory, deployment.specification.num_cpu);
+    let stateful_set: StatefulSet = templates::h2o_stateful_set(&deployment.specification.name, &deployment.specification.namespace, "h2oai/h2o-open-source-k8s", "latest",
+                                                                deployment.specification.num_h2o_nodes, deployment.specification.memory_percentage, &deployment.specification.memory, deployment.specification.num_cpu);
     return match tokio_runtime.block_on(statefulset_api.create(&PostParams::default(), &stateful_set)) {
         Ok(statefulset) => {
             Result::Ok(statefulset)
