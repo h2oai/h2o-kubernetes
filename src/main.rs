@@ -6,16 +6,16 @@ use std::path::Path;
 
 use kube::{Client, Error};
 
-use crate::args::Command;
+use crate::cli::Command;
 use crate::k8s::{Deployment, DeploymentSpecification};
 
-mod args;
+mod cli;
 mod k8s;
 #[cfg(test)]
 mod tests;
 
 fn main() {
-    match args::parse_arguments() {
+    match cli::parse_arguments() {
         Command::Deployment(deployment) => {
             deploy(deployment);
         }

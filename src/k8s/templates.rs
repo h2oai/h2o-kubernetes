@@ -1,3 +1,6 @@
+/// Contains YAML templates for Kubernetes deployment used by H2O cluster.
+/// The templates have corresponding methods to fill the template and return a new instance of
+/// respective Kubernetes component.
 use k8s_openapi::api::apps::v1::StatefulSet;
 use k8s_openapi::api::core::v1::Service;
 use serde_yaml;
