@@ -4,97 +4,90 @@ use std::fs::{File, remove_file};
 use std::io::Write;
 use std::path::Path;
 
-use clap::ArgMatches;
-use kube::Client;
-use names::Generator;
+use kube::{Client, Error};
 
-use crate::k8s::{Deployment};
+use crate::cli::{Command};
+use crate::k8s::{Deployment, DeploymentSpecification};
 
-mod args;
+mod cli;
 mod k8s;
 #[cfg(test)]
 mod tests;
 
 fn main() {
-    let args: ArgMatches = args::parse_arguments();
-    if let Some(deploy_args) = args.subcommand_matches("deploy") {
-        deploy(deploy_args);
-    } else if let Some(undeploy_args) = args.subcommand_matches("undeploy") {
-        undeploy(undeploy_args);
-    }
+    let command = match cli::get_command(){
+        Ok(cmd) => { cmd},
+        Err(error) => {
+            eprintln!("Unable to process user input: {:?}", error);
+            std::process::exit(1);
+        },
+    };
+    match command {
+        Command::Deployment(deployment) => {
+            deploy(deployment);
+        }
+        Command::Undeploy(deployment_path) => {
+            undeploy(deployment_path.as_path())
+        }
+    };
 }
 
-fn deploy(deploy_args: &ArgMatches) {
-    let client: Client;
-    let mut kubeconfig_location: Option<String> = match deploy_args.value_of("kubeconfig") {
-        None => { Option::None }
-        Some(kubeconfig) => { Some(String::from(kubeconfig)) }
+fn deploy(deployment_specification: DeploymentSpecification) {
+    let client: Client = if let Some(kubeconfig) = &deployment_specification.kubeconfig_path {
+        k8s::from_kubeconfig(kubeconfig.as_path())
+    } else {
+        let default_client: Result<Client, Error> = k8s::try_default();
+        match default_client {
+            Ok(cl) => { cl }
+            Err(_) => { panic!("No kubeconfig provided by the user and search in well-known kubeconfig locations failed") }
+        }
     };
 
-    if let Some(kubeconfig) = &kubeconfig_location {
-        println!("Using user-provided kubeconfig at the following location: {}", kubeconfig);
-        client = k8s::from_kubeconfig(Path::new(kubeconfig));
-    } else {
-        println!("Kubeconfig not provided. Searching in well-known locations.");
-        if let (Some(path), Some(cl)) = k8s::try_openshift_kubeconfig() {
-            println!("Discovered OpenShift kubeconfig at the following location: {} - using it for deployment.", path);
-            kubeconfig_location = Option::Some(path);
-            client = cl;
-        } else {
-            client = k8s::try_default();
+    let deployment: Deployment = match k8s::deploy_h2o_cluster(&client, deployment_specification) {
+        Ok(successful_deployment) => { successful_deployment }
+        Err(error) => {
+            panic!("Unable to deploy H2O cluster. Error:\n{}", error);
         }
-    }
-    let deployment_name: String = deployment_name(deploy_args);
-    let nodes: i32 = deploy_args.value_of("cluster_size").unwrap().parse::<i32>().unwrap();
-    let memory_percentage: u8 = deploy_args.value_of("memory_percentage").unwrap().parse::<u8>().unwrap();
-    let memory: String = memory(deploy_args);
-    let num_cpus: u32 = cpus(deploy_args);
-    let mut deployment: Deployment = k8s::deploy_h2o(&client, deployment_name.as_str(), deploy_args.value_of("namespace").unwrap(),
-                                                     nodes, memory_percentage, &memory, num_cpus);
+    };
 
-    if kubeconfig_location.is_some() {
-        deployment.kubeconfig_path = Option::Some(kubeconfig_location.unwrap());
-    }
-    println!("Finished deployment of '{}' cluster.", deployment.name);
+    print!("{}.h2ok", deployment.specification.name);
     persist_deployment(&deployment);
 }
 
-fn cpus(deploy_args: &ArgMatches) -> u32 {
-    return match deploy_args.value_of("cpus") {
-        None => {
-            1
-        }
-        Some(cpus) => { cpus.parse::<u32>().unwrap() }
-    };
-}
+fn undeploy(deployment_descriptor_path: &Path) {
+    let deployment_file = File::open(deployment_descriptor_path).unwrap();
+    let deployment: Deployment = serde_json::from_reader(deployment_file).unwrap();
 
-fn memory(deploy_args: &ArgMatches) -> String {
-    return match deploy_args.value_of("memory") {
+    // Attempt to use the very same kubeconfig to undeploy as was used to deploy
+    let client: Client = match &deployment.specification.kubeconfig_path {
         None => {
-            String::from("4Gi")
+            // No kubeconfig specified means the one from the environment should be used.
+            k8s::try_default().unwrap()
         }
-        Some(memory) => { String::from(memory) }
-    };
-}
-
-fn deployment_name(deploy_args: &ArgMatches) -> String {
-    return match deploy_args.value_of("name") {
-        None => {
-            let mut generator: Generator = Generator::default();
-            format!("h2o-{}", generator.next().unwrap())
+        Some(kubeconfig_path) => {
+            k8s::from_kubeconfig(kubeconfig_path)
         }
-        Some(name) => { String::from(name) }
     };
+    match k8s::undeploy_h2o(&client, &deployment) {
+        Ok(_) => {}
+        Err(deployment_errs) => {
+            for undeployed in deployment_errs.iter() {
+                print!("Unable to undeploy '{}' - skipping.", undeployed)
+            }
+        }
+    }
+    println!("Removed deployment '{}'.", deployment.specification.name);
+    remove_file(deployment_descriptor_path).unwrap();
 }
 
 fn persist_deployment(deployment: &Deployment) {
-    let mut file_name = format!("{}.h2ok", deployment.name);
+    let mut file_name = format!("{}.h2ok", deployment.specification.name);
     let mut path: &Path = Path::new(file_name.as_str());
     let mut duplicate_deployment_count: i64 = 0;
     while path.exists() {
         println!("Writing file");
         duplicate_deployment_count += 1;
-        file_name = format!("{}({}).h2ok", deployment.name, duplicate_deployment_count);
+        file_name = format!("{}({}).h2ok", deployment.specification.name, duplicate_deployment_count);
         path = Path::new(file_name.as_str());
     }
     let mut file: File = match File::create(path) {
@@ -105,24 +98,4 @@ fn persist_deployment(deployment: &Deployment) {
         }
     };
     file.write_all(serde_json::to_string(deployment).unwrap().as_bytes()).unwrap();
-}
-
-fn undeploy(undeploy_args: &ArgMatches) {
-    let file_path = match undeploy_args.value_of("file") {
-        None => { panic!("Deployment file undefined.") }
-        Some(file) => { file }
-    };
-    let deployment_file = File::open(file_path).unwrap();
-    let deployment: Deployment = serde_json::from_reader(deployment_file).unwrap();
-    let client: Client = k8s::from_kubeconfig(Path::new(deployment.kubeconfig_path.clone().unwrap().as_str()));
-    match k8s::undeploy_h2o(&client, &deployment){
-        Ok(_) => {},
-        Err(deployment_errs) => {
-            for undeployed in deployment_errs.iter(){
-                println!("Unable to undeploy '{}' - skipping.", undeployed)
-            }
-        }
-    }
-    println!("Removed deployment '{}'.", deployment.name);
-    remove_file(file_path).unwrap();
 }
