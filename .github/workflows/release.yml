@@ -9,8 +9,8 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+
   build-linux:
-    
     runs-on: ubuntu-latest
     env:
       TARGET: x86_64-unknown-linux-musl
@@ -30,3 +30,42 @@ jobs:
         run: cargo test --verbose
       - name: Release build
         run: cargo build --release --target $TARGET
+      - name: Upload math result for job 1
+        uses: actions/upload-artifact@v2
+        with:
+          name: x86_64-unknown-linux-musl
+          path: target/x86_64-unknown-linux-musl/release/h2ok
+
+
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: build-linux
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: true
+          prerelease: false
+      - name: Download Linux X64 binary
+        uses: actions/download-artifact@v2
+        with:
+          name: x86_64-unknown-linux-musl
+          path: x86_64-unknown-linux-musl
+      - name: Upload Release Asset
+        id: upload-release-asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./x86_64-unknown-linux-musl/h2ok
+          asset_name: h2ok
+          asset_content_type: application
