@@ -18,7 +18,9 @@ Deploys an H2O cluster into Kubernetes by creating all the necessary components.
 If deployment of any of the component fails a rollback of existing components is attempted automatically.
  
 **Mininal example**: `h2ok deploy --cluster-size 3`.
+
 **Minimal example - custom kubeconfig and namespace**: `h2ok deploy --cluster-size 3 --kubeconfig /etc/rancher/k3s/k3s.yaml --namespace default`
+
 The `namespace` option defaults to namespace. If `kubeconfig` is not defined, well-known locations and environment variables are searched.
 
 After each deployment is done, a file with cluster's name and an `.h2ok` suffix is saved to the working directory. Such a file serves as a descriptor of the deployment done and may later be used by `h2ok undeploy -f h2o-deployment-name.h2ok` to automatically undeploy the whole H2O cluster from Kubernetes.
