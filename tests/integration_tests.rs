@@ -142,3 +142,17 @@ fn test_undeploy_piping() {
         .code(0)
         .stdout(predicates::str::is_match("Removed deployment 'h2o-\\.*").unwrap());
 }
+
+/// Test if output of `deploy` command is properly accepted by the `undeploy` command.
+/// Output of `deploy` command (if successful) is filename of the deployment descriptor persisted.
+#[test]
+fn test_undeploy_missing_deployment_descriptor() {
+    let mut undeploy_cmd = Command::cargo_bin("h2ok").unwrap();
+    undeploy_cmd.write_stdin("nonexistent_file");
+
+    let assert_undeploy: Assert = undeploy_cmd.args(&["undeploy"]).assert();
+
+    assert_undeploy.failure()
+        .code(1)
+        .stderr(predicates::str::is_match(r#"Unable to process user input: UserInputError \{ kind: UnreachableDeploymentDescriptor \}"#).unwrap());
+}

@@ -6,7 +6,7 @@ use std::path::Path;
 
 use kube::{Client, Error};
 
-use crate::cli::Command;
+use crate::cli::{Command};
 use crate::k8s::{Deployment, DeploymentSpecification};
 
 mod cli;
@@ -15,7 +15,14 @@ mod k8s;
 mod tests;
 
 fn main() {
-    match cli::get_command() {
+    let command = match cli::get_command(){
+        Ok(cmd) => { cmd},
+        Err(error) => {
+            eprintln!("Unable to process user input: {:?}", error);
+            std::process::exit(1);
+        },
+    };
+    match command {
         Command::Deployment(deployment) => {
             deploy(deployment);
         }

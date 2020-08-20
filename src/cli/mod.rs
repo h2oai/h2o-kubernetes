@@ -9,12 +9,13 @@ use crate::k8s::DeploymentSpecification;
 use std::str::FromStr;
 use std::io;
 use std::io::Read;
+use crate::cli::CommandErrorKind::{MissingDeploymentDescriptor, UnreachableDeploymentDescriptor};
 
 const APP_NAME: &str = "H2O Kubernetes CLI";
 const APP_VERSION: &str = "0.1.0";
 
 /// Extracts user-provided arguments and builds a `Command` out of user input.
-pub fn get_command() -> Command {
+pub fn get_command() -> Result<Command, UserInputError> {
     let app: App = build_app();
     let args: ArgMatches = app.get_matches();
 
@@ -36,7 +37,7 @@ pub fn get_command() -> Command {
 
         let deployment: DeploymentSpecification = DeploymentSpecification::new(deployment_name, namespace, jvm_memory_percentage,
                                                                                memory, num_cpus, cluster_size, kubeconfig_path);
-        return Command::Deployment(deployment);
+        return Ok(Command::Deployment(deployment));
     } else if let Some(undeploy_args) = args.subcommand_matches("undeploy") {
         match undeploy_args.value_of("file") {
             None => {
@@ -44,25 +45,24 @@ pub fn get_command() -> Command {
                 let mut deployment_path_stdin_buf = String::new();
                 io::stdin().read_to_string(&mut deployment_path_stdin_buf).unwrap();
                 if deployment_path_stdin_buf.len() == 0 {
-                    panic!("Deployment file undefined.")
+                    return Err(UserInputError::new(MissingDeploymentDescriptor));
                 }
                 let deployment_descriptor_path: PathBuf = PathBuf::from(&deployment_path_stdin_buf);
-                if deployment_descriptor_path.exists() {
-                    return Command::Undeploy(deployment_descriptor_path);
+                if deployment_descriptor_path.exists() && deployment_descriptor_path.is_file() {
+                    return Ok(Command::Undeploy(deployment_descriptor_path));
                 } else {
                     let mut pwd_relative_path: PathBuf = std::env::current_dir().unwrap();
                     pwd_relative_path.push(deployment_descriptor_path);
 
                     if pwd_relative_path.exists() && pwd_relative_path.is_file() {
-                        println!("{}", pwd_relative_path.to_str().unwrap());
-                        return Command::Undeploy(pwd_relative_path);
+                        return Ok(Command::Undeploy(pwd_relative_path));
                     } else {
-                        panic!("Unable to reach deployment file: {}", &deployment_path_stdin_buf);
+                        return Err(UserInputError::new(UnreachableDeploymentDescriptor));
                     }
                 }
             }
             Some(file) => {
-                return Command::Undeploy(PathBuf::from(file));
+                return Ok(Command::Undeploy(PathBuf::from(file)));
             }
         };
     } else {
@@ -74,6 +74,25 @@ pub fn get_command() -> Command {
 pub enum Command {
     Deployment(DeploymentSpecification),
     Undeploy(PathBuf),
+}
+
+
+/// Error while processing user input.
+#[derive(Debug)]
+pub struct UserInputError {
+    kind: CommandErrorKind,
+}
+
+impl UserInputError {
+    pub fn new(kind: CommandErrorKind) -> Self {
+        UserInputError { kind }
+    }
+}
+
+#[derive(Debug)]
+pub enum CommandErrorKind {
+    MissingDeploymentDescriptor,
+    UnreachableDeploymentDescriptor,
 }
 
 /// Attempts to extract/parse a number from user-given argument. If the user did not provide
