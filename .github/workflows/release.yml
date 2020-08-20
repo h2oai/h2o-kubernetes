@@ -1,4 +1,4 @@
-name: Rust
+name: Release pipeline
 
 on:
   pull_request:
@@ -12,14 +12,14 @@ jobs:
   build-linux:
     
     runs-on: ubuntu-latest
+    env:
+      TARGET: x86_64-unknown-linux-musl
     
     steps:
       - name: actions-k3s
         uses: debianmaster/actions-k3s@v1.0.0
         id: k3s
       - uses: actions/checkout@v2
-      - env:
-          TARGET: x86_64-unknown-linux-musl
       - name: Install target
         run: rustup target add $TARGET
       - name: Build
