@@ -7,40 +7,53 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  TARGET_LINUX: x86_64-unknown-linux-gnu
+  TARGET_MACOS: x86_64-apple-darwin
+  TARGET_WINDOWS: x86_64-pc-windows-gnu
 
 jobs:
-
   build-linux:
     runs-on: ubuntu-latest
-    env:
-      TARGET: x86_64-unknown-linux-musl
-    
     steps:
-      - name: actions-k3s
+      - name: Install cross-platform compile dependencies
+        run: sudo apt install mingw-w64 pkg-config libssl-dev -y
+      - name: Start K3S
         uses: debianmaster/actions-k3s@v1.0.0
         id: k3s
       - uses: actions/checkout@v2
-      - name: Install target
-        run: rustup target add $TARGET
-      - name: Install dependencies
-        run: sudo apt install musl musl-tools -y
-      - name: Build
-        run: cargo build --verbose
-      - name: Run tests
+      - name: Cargo test
         run: cargo test --verbose
       - name: Release build
-        run: cargo build --release --target $TARGET
-      - name: Upload math result for job 1
+        run: rustup target add ${{ env.TARGET_LINUX }} && rustup target add ${{ env.TARGET_WINDOWS }} && cargo build --release --target ${{ env.TARGET_LINUX }} && cargo build --release --target ${{ env.TARGET_WINDOWS }}
+      - name: Create ${{ env.TARGET_LINUX }} and ${{ env.TARGET_LINUX }} ZIP packages
+        run: zip -j h2ok_${{ env.TARGET_LINUX }}.zip target/${{ env.TARGET_LINUX }}/release/h2ok LICENSE && zip -j h2ok_${{ env.TARGET_WINDOWS }}.zip target/${{ env.TARGET_WINDOWS }}/release/h2ok.exe LICENSE
+      - name: Upload ${{ env.TARGET_LINUX }}
         uses: actions/upload-artifact@v2
         with:
-          name: x86_64-unknown-linux-musl
-          path: target/x86_64-unknown-linux-musl/release/h2ok
+          name: ${{ env.TARGET_LINUX }}
+          path: h2ok_${{ env.TARGET_LINUX }}.zip
+      - name: Upload ${{ env.TARGET_WINDOWS }}
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ env.TARGET_WINDOWS }}
+          path: h2ok_${{ env.TARGET_WINDOWS }}.zip
 
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Create ${{ env.TARGET_MACOS }} ZIP package
+        run: cargo build --release --target ${{ env.TARGET_MACOS }} && zip -j h2ok_${{ env.TARGET_MACOS }}.zip target/${{ env.TARGET_MACOS }}/release/h2ok LICENSE
+      - name: Upload ${{ env.TARGET_MACOS }}
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ env.TARGET_MACOS }}
+          path: h2ok_${{ env.TARGET_MACOS }}.zip
 
   release:
     name: Create Release
     runs-on: ubuntu-latest
-    needs: build-linux
+    needs: [build-linux, build-macos]
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
@@ -54,18 +67,45 @@ jobs:
           release_name: Release ${{ github.ref }}
           draft: true
           prerelease: false
-      - name: Download Linux X64 binary
+      - name: Download ${{ env.TARGET_LINUX }} binary
         uses: actions/download-artifact@v2
         with:
-          name: x86_64-unknown-linux-musl
-          path: x86_64-unknown-linux-musl
-      - name: Upload Release Asset
-        id: upload-release-asset
+          name: ${{ env.TARGET_LINUX }}
+      - name: Download ${{ env.TARGET_WINDOWS }} binary
+        uses: actions/download-artifact@v2
+        with:
+          name: ${{ env.TARGET_WINDOWS }}
+      - name: Download ${{ env.TARGET_MACOS }} binary
+        uses: actions/download-artifact@v2
+        with:
+          name: ${{ env.TARGET_MACOS }}
+      - name: Upload ${{ env.TARGET_LINUX }} asset
+        id: upload-release-asset-linux
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./x86_64-unknown-linux-musl/h2ok
-          asset_name: h2ok
+          asset_path: ./h2ok_${{ env.TARGET_LINUX }}.zip
+          asset_name: ${{ env.TARGET_LINUX }}
+          asset_content_type: application
+      - name: Upload ${{ env.TARGET_WINDOWS }} asset
+        id: upload-release-asset-win
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./h2ok_${{ env.TARGET_WINDOWS }}.zip
+          asset_name: ${{ env.TARGET_WINDOWS }}
+          asset_content_type: application
+      - name: Upload ${{ env.TARGET_MACOS }} asset
+        id: upload-release-asset-macos
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./h2ok_${{ env.TARGET_MACOS }}.zip
+          asset_name: ${{ env.TARGET_MACOS }}
           asset_content_type: application
