@@ -44,7 +44,7 @@ Goal is to provide a fully configurable tool with reasonable defaults for everyd
 H2O Kubernetes CLI (`h2ok`) is written in [Rust](https://www.rust-lang.org/), using its standard built-in tools. The build and dependency management tool is therefore [Cargo](https://crates.io/).
 
 - Development build : `cargo build`
-- Release build: `cargo release`
+- Release build: `cargo build --release`
 - Development run: `cargo run -- deploy --namespace default --kubeconfig /etc/rancher/k3s/k3s.yaml --cluster_size 3`
 - Test: `cargo test` - please note many tests have prerequisities - running Kubernetes cluster and the `KUBECONFIG` variable set.
 
