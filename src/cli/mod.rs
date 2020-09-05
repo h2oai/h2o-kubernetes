@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use clap::{App, Arg, ArgMatches, SubCommand};
+use clap::{App, Arg, ArgMatches, SubCommand, AppSettings};
 use names::Generator;
 use num::Num;
 use regex::Regex;
@@ -130,6 +130,7 @@ fn extract_string(args: &ArgMatches, arg_name: &str) -> Option<String> {
 fn build_app<'a>() -> App<'a, 'a> {
     return App::new(APP_NAME)
         .version(APP_VERSION)
+        .setting(AppSettings::ArgRequiredElseHelp)
         .subcommand(SubCommand::with_name("deploy")
             .about("Deploys an H2O cluster into Kubernetes. Once successfully deployed a deployment descriptor file with cluster name is saved.\
              Such a file can be used to undeploy the cluster or built on top of by adding additional services.")

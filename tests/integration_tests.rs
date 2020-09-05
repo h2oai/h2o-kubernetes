@@ -1,13 +1,7 @@
 use assert_cmd::assert::Assert;
 use assert_cmd::Command;
 
-#[test]
-fn test_general_help() {
-    let mut cmd = Command::cargo_bin("h2ok").unwrap();
-    let assert: Assert = cmd.arg("-h")
-        .assert();
-
-    let expected_output_pattern: &str = r#"H2O Kubernetes CLI \d+.\d+.\d+.*
+const expected_generat_help: &str = r#"H2O Kubernetes CLI \d+.\d+.\d+.*
 
 USAGE:
     h2ok \[SUBCOMMAND\]
@@ -23,9 +17,24 @@ SUBCOMMANDS:
     help        Prints this message or the help of the given subcommand\(s\).*
     undeploy    Undeploys an existing H2O cluster from Kubernetes"#;
 
+#[test]
+fn test_general_help() {
+    let mut cmd = Command::cargo_bin("h2ok").unwrap();
+    let assert: Assert = cmd.arg("-h")
+        .assert();
     assert.success()
         .code(0)
-        .stdout(predicates::str::is_match(expected_output_pattern).unwrap());
+        .stdout(predicates::str::is_match(expected_generat_help).unwrap());
+}
+
+/// If no `-h` or `-help` or any subcommand is provided to `h2ok`, general help should be displayed.
+#[test]
+fn test_general_help_no_flag() {
+    let mut cmd = Command::cargo_bin("h2ok").unwrap();
+    let assert: Assert = cmd.assert();
+
+    assert.failure()
+        .stderr(predicates::str::is_match(expected_generat_help).unwrap());
 }
 
 #[test]
