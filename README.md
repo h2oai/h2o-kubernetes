@@ -30,15 +30,6 @@ Undeploys existing deployment from a Kubernetes cluster using deployment descrip
 
 **Minimal example**: `h2ok undeploy -f h2ok-deployment-name.h2ok`
 
-## The future plans
-- Support deployment of the whole machine learning toolkit for easy bootstrap, e.g. deploy Jupyter notebook and expose it.
-   Currently, only basic H2O-3 deployment is supported.
-- Define version of H2O to deploy
-- Custom H2O-3 docker image & custom repository
-- External XGBoost support
-
-Goal is to provide a fully configurable tool with reasonable defaults for everyday use.
-
 ## Building, testing and running
 
 H2O Kubernetes CLI (`h2ok`) is written in [Rust](https://www.rust-lang.org/), using its standard built-in tools. The build and dependency management tool is therefore [Cargo](https://crates.io/).
