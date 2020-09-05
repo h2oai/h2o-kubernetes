@@ -1,9 +1,11 @@
-name: Release pipeline
-
+name: Release
+# Creates a release for push event  to matching v*, i.e. v1.0, v20.15.10
+# The release created is a draft - this means it has to be checked and published manually afterwards.
+# This is purely intentional.
 on:
-  pull_request:
-    branches: [ master ]
-  workflow_dispatch:
+  push:
+    tags:
+      - 'v*
 
 env:
   CARGO_TERM_COLOR: always
