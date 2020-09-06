@@ -15,12 +15,12 @@ mod k8s;
 mod tests;
 
 fn main() {
-    let command = match cli::get_command(){
-        Ok(cmd) => { cmd},
+    let command = match cli::get_command() {
+        Ok(cmd) => { cmd }
         Err(error) => {
             eprintln!("Unable to process user input: {:?}", error);
             std::process::exit(1);
-        },
+        }
     };
     match command {
         Command::Deployment(deployment) => {
@@ -28,6 +28,9 @@ fn main() {
         }
         Command::Undeploy(deployment_path) => {
             undeploy(deployment_path.as_path())
+        }
+        Command::Ingress(deployment_path) => {
+            ingress(&deployment_path);
         }
     };
 }
@@ -51,11 +54,38 @@ fn deploy(deployment_specification: DeploymentSpecification) {
     };
 
     print!("{}.h2ok", deployment.specification.name);
-    persist_deployment(&deployment);
+    persist_deployment(&deployment, false);
 }
 
-fn undeploy(deployment_descriptor_path: &Path) {
-    let deployment_file = File::open(deployment_descriptor_path).unwrap();
+fn persist_deployment(deployment: &Deployment, overwrite: bool) {
+    let mut file_name = format!("{}.h2ok", deployment.specification.name);
+    let mut path: &Path = Path::new(file_name.as_str());
+    let mut duplicate_deployment_count: i64 = 0;
+
+    if (path.exists()) {
+        if overwrite {
+            std::fs::remove_file(path);
+        } else {
+            while path.exists() {
+                println!("Writing file");
+                duplicate_deployment_count += 1;
+                file_name = format!("{}({}).h2ok", deployment.specification.name, duplicate_deployment_count);
+                path = Path::new(file_name.as_str());
+            }
+        }
+    }
+    let mut file: File = match File::create(path) {
+        Ok(file) => { file }
+        Err(err) => {
+            println!("Unable to write deployment file '{}' - skipping. Reason: {}", path.to_str().unwrap(), err);
+            return;
+        }
+    };
+    file.write_all(serde_json::to_string(deployment).unwrap().as_bytes()).unwrap();
+}
+
+fn undeploy(deployment_descriptor: &Path) {
+    let deployment_file = File::open(deployment_descriptor).unwrap();
     let deployment: Deployment = serde_json::from_reader(deployment_file).unwrap();
 
     // Attempt to use the very same kubeconfig to undeploy as was used to deploy
@@ -77,25 +107,24 @@ fn undeploy(deployment_descriptor_path: &Path) {
         }
     }
     println!("Removed deployment '{}'.", deployment.specification.name);
-    remove_file(deployment_descriptor_path).unwrap();
+    remove_file(deployment_descriptor).unwrap();
 }
 
-fn persist_deployment(deployment: &Deployment) {
-    let mut file_name = format!("{}.h2ok", deployment.specification.name);
-    let mut path: &Path = Path::new(file_name.as_str());
-    let mut duplicate_deployment_count: i64 = 0;
-    while path.exists() {
-        println!("Writing file");
-        duplicate_deployment_count += 1;
-        file_name = format!("{}({}).h2ok", deployment.specification.name, duplicate_deployment_count);
-        path = Path::new(file_name.as_str());
-    }
-    let mut file: File = match File::create(path) {
-        Ok(file) => { file }
-        Err(err) => {
-            println!("Unable to write deployment file '{}' - skipping. Reason: {}", path.to_str().unwrap(), err);
-            return;
+fn ingress(deployment_descriptor: &Path) {
+    let deployment_file = File::open(deployment_descriptor).unwrap();
+    let mut deployment: Deployment = serde_json::from_reader(deployment_file).unwrap();
+
+    // Attempt to use the very same kubeconfig to undeploy as was used to deploy
+    let client: Client = match &deployment.specification.kubeconfig_path {
+        None => {
+            // No kubeconfig specified means the one from the environment should be used.
+            k8s::try_default().unwrap()
+        }
+        Some(kubeconfig_path) => {
+            k8s::from_kubeconfig(kubeconfig_path)
         }
     };
-    file.write_all(serde_json::to_string(deployment).unwrap().as_bytes()).unwrap();
+
+    k8s::create_ingress(&client, &mut deployment);
+    persist_deployment(&deployment, true);
 }

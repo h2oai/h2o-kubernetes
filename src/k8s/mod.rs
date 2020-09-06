@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 
 use k8s_openapi::api::apps::v1::StatefulSet;
 use k8s_openapi::api::core::v1::Service;
-use k8s_openapi::api::extensions::v1beta1::Ingress;
 use kube::Client;
 use serde::{Deserialize, Serialize};
 use tokio::runtime::Runtime;
@@ -14,6 +13,7 @@ use self::futures::executor::block_on;
 use self::kube::{Api, Config, Error};
 use self::kube::api::{DeleteParams, Meta, PostParams};
 use self::kube::config::{Kubeconfig, KubeConfigOptions};
+use k8s_openapi::api::networking::v1beta1::Ingress;
 
 mod templates;
 
@@ -115,7 +115,7 @@ fn deploy_statefulset(tokio_runtime: &mut Runtime, client: &Client, deployment: 
             undeploy_h2o(&client, &deployment).unwrap();
             Result::Err(e)
         }
-    }
+    };
 }
 
 pub fn undeploy_h2o(client: &Client, deployment: &Deployment) -> Result<(), Vec<String>> {
@@ -153,6 +153,22 @@ pub fn undeploy_h2o(client: &Client, deployment: &Deployment) -> Result<(), Vec<
     } else {
         Ok(())
     };
+}
+
+pub fn create_ingress(client: &Client, deployment: &mut Deployment) -> Result<(), Error> {
+    let mut tokio_runtime: Runtime = tokio::runtime::Runtime::new().unwrap();
+
+    let api: Api<Ingress> = Api::namespaced(client.clone(), &deployment.specification.namespace);
+    let ingress: Ingress = templates::h2o_ingress(&deployment.specification.name, &deployment.specification.namespace);
+    match tokio_runtime.block_on(api.create(&PostParams::default(), &ingress)) {
+        Ok(ingress) => {
+            deployment.ingresses.push(ingress);
+            return Ok(());
+        }
+        Err(e) => {
+            return Err(e);
+        }
+    }
 }
 
 #[cfg(test)]

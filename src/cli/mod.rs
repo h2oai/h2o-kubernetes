@@ -65,6 +65,15 @@ pub fn get_command() -> Result<Command, UserInputError> {
                 return Ok(Command::Undeploy(PathBuf::from(file)));
             }
         };
+    } else if let Some(ingress_args) = args.subcommand_matches("ingress") {
+        match ingress_args.value_of("file") {
+            None => {
+                return Err(UserInputError::new(UnreachableDeploymentDescriptor));
+            }
+            Some(file) => {
+                return Ok(Command::Ingress(PathBuf::from(file))); // Safe to do, as the file is checked for existence
+            }
+        }
     } else {
         panic!("Unknown command.");
     }
@@ -74,6 +83,7 @@ pub fn get_command() -> Result<Command, UserInputError> {
 pub enum Command {
     Deployment(DeploymentSpecification),
     Undeploy(PathBuf),
+    Ingress(PathBuf),
 }
 
 
@@ -182,6 +192,15 @@ fn build_app<'a>() -> App<'a, 'a> {
         )
         .subcommand(SubCommand::with_name("undeploy")
             .about("Undeploys an existing H2O cluster from Kubernetes")
+            .arg(Arg::with_name("file")
+                .long("file")
+                .short("f")
+                .number_of_values(1)
+                .help("H2O deployment descriptor file path. If not specified, attempt is made to parse deployment descriptor path from stdin.")
+                .validator(self::validate_path)
+            ))
+        .subcommand(SubCommand::with_name("ingress")
+            .about("Creates an ingress pointing to the given H2O K8S deployment")
             .arg(Arg::with_name("file")
                 .long("file")
                 .short("f")

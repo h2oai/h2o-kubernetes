@@ -4,6 +4,7 @@
 use k8s_openapi::api::apps::v1::StatefulSet;
 use k8s_openapi::api::core::v1::Service;
 use serde_yaml;
+use k8s_openapi::api::networking::v1beta1::Ingress;
 
 const STATEFUL_SET_TEMPLATE: &str = r#"
 apiVersion: apps/v1
@@ -93,4 +94,31 @@ pub fn h2o_service(name: &str, namespace: &str) -> Service {
 
     let service: Service = serde_yaml::from_str(&service_definition).unwrap();
     return service;
+}
+
+const INGRESS_TEMPLATE: &str = r#"
+apiVersion: networking.k8s.io/v1beta1
+kind: Ingress
+metadata:
+  name: <name>-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    traefik.frontend.rule.type: PathPrefixStrip
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /<name>
+        pathType: Exact
+        backend:
+          serviceName: <name>-service
+          servicePort: 80
+"#;
+
+pub fn h2o_ingress(name: &str, namespace: &str) -> Ingress {
+    let ingress_definition = INGRESS_TEMPLATE.replace("<name>", name)
+        .replace("<namespace>", namespace);
+
+    let ingress: Ingress = serde_yaml::from_str(&ingress_definition).unwrap();
+    return ingress;
 }
