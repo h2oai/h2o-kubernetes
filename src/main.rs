@@ -57,14 +57,19 @@ fn deploy(deployment_specification: DeploymentSpecification) {
     persist_deployment(&deployment, false);
 }
 
+///Persists a Deployment into current workdir. Name of the resulting file is the name of the deployment name followed by `.h2ok` suffix.
+///
 fn persist_deployment(deployment: &Deployment, overwrite: bool) {
     let mut file_name = format!("{}.h2ok", deployment.specification.name);
     let mut path: &Path = Path::new(file_name.as_str());
     let mut duplicate_deployment_count: i64 = 0;
 
-    if (path.exists()) {
+    if path.exists() {
         if overwrite {
-            std::fs::remove_file(path);
+            match std::fs::remove_file(path) {
+                Ok(_) => {}
+                Err(e) => { panic!("Unable to remove existing deployment file. Reason: \n{}", e) }
+            }
         } else {
             while path.exists() {
                 println!("Writing file");
@@ -125,6 +130,10 @@ fn ingress(deployment_descriptor: &Path) {
         }
     };
 
-    k8s::create_ingress(&client, &mut deployment);
-    persist_deployment(&deployment, true);
+    match k8s::deploy_ingress(&client, &mut deployment) {
+        Ok(_) => { persist_deployment(&deployment, true); }
+        Err(e) => {
+            panic!("Unable to create ingress for {} deployment. Reason: \n{}", &deployment.specification.name, e);
+        }
+    }
 }

@@ -109,14 +109,20 @@ fn test_deploy_undeploy() {
     let assert_deploy: Assert = deploy_cmd.args(&["deploy", "--cluster_size", "1", "--kubeconfig", env!("KUBECONFIG")])
         .assert();
 
-    let output = assert_deploy.success()
+    let output: Vec<u8> = assert_deploy.success()
         .code(0)
         .stdout(predicates::str::is_match(".*\\.h2ok").unwrap())
         .get_output().clone().stdout;
 
     let deployment_filename = format!("{}/{}", env!("CARGO_MANIFEST_DIR"), String::from_utf8(output).unwrap().trim());
 
-    let mut undeploy_cmd = Command::cargo_bin("h2ok").unwrap();
+    let mut ingress_cmd: Command = Command::cargo_bin("h2ok").unwrap();
+    let assert_ingress = ingress_cmd.args(&["ingress", "-f", &deployment_filename]).assert();
+
+    assert_ingress.code(0)
+        .success();
+
+    let mut undeploy_cmd : Command = Command::cargo_bin("h2ok").unwrap();
     let assert_undeploy: Assert = undeploy_cmd.args(&["undeploy", "-f", &deployment_filename])
         .assert();
 

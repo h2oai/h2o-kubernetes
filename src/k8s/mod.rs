@@ -155,7 +155,7 @@ pub fn undeploy_h2o(client: &Client, deployment: &Deployment) -> Result<(), Vec<
     };
 }
 
-pub fn create_ingress(client: &Client, deployment: &mut Deployment) -> Result<(), Error> {
+pub fn deploy_ingress(client: &Client, deployment: &mut Deployment) -> Result<(), Error> {
     let mut tokio_runtime: Runtime = tokio::runtime::Runtime::new().unwrap();
 
     let api: Api<Ingress> = Api::namespaced(client.clone(), &deployment.specification.namespace);
@@ -195,10 +195,20 @@ mod tests {
         let client: Client = super::from_kubeconfig(kubeconfig_path);
         let deployment_specification: DeploymentSpecification = DeploymentSpecification::new("h2o-k8s-test-cluster".to_string(), TEST_CLUSTER_NAMESPACE.to_string(),
                                                                                              80, "256Mi".to_string(), 2, 2, None);
-        let deployment: Deployment = super::deploy_h2o_cluster(&client, deployment_specification).unwrap();
+        let mut deployment: Deployment = super::deploy_h2o_cluster(&client, deployment_specification).unwrap();
         assert_eq!(1, deployment.services.len());
         assert_eq!(1, deployment.stateful_sets.len());
         assert_eq!(0, deployment.ingresses.len());
+
+        // Deploy ingress on top of existing deployment
+        match super::deploy_ingress(&client, &mut deployment) {
+            Ok(_) => {
+                assert_eq!(1, deployment.ingresses.len());
+            }
+            Err(e) => {
+                panic!("Test of ingress deployment failed. Reason: \n{}", e);
+            }
+        }
         let undeployment_result = super::undeploy_h2o(&client, &deployment);
         assert!(undeployment_result.is_ok());
     }
