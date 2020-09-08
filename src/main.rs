@@ -15,12 +15,12 @@ mod k8s;
 mod tests;
 
 fn main() {
-    let command = match cli::get_command(){
-        Ok(cmd) => { cmd},
+    let command = match cli::get_command() {
+        Ok(cmd) => { cmd }
         Err(error) => {
             eprintln!("Unable to process user input: {:?}", error);
             std::process::exit(1);
-        },
+        }
     };
     match command {
         Command::Deployment(deployment) => {
@@ -28,6 +28,9 @@ fn main() {
         }
         Command::Undeploy(deployment_path) => {
             undeploy(deployment_path.as_path())
+        }
+        Command::Ingress(deployment_path) => {
+            ingress(&deployment_path);
         }
     };
 }
@@ -51,11 +54,73 @@ fn deploy(deployment_specification: DeploymentSpecification) {
     };
 
     print!("{}.h2ok", deployment.specification.name);
-    persist_deployment(&deployment);
+    persist_deployment(&deployment, false);
 }
 
-fn undeploy(deployment_descriptor_path: &Path) {
-    let deployment_file = File::open(deployment_descriptor_path).unwrap();
+///Persists a Deployment into current workdir. Name of the resulting file is the name of the deployment name followed by `.h2ok` suffix.
+///
+fn persist_deployment(deployment: &Deployment, overwrite: bool) {
+    let mut file_name = format!("{}.h2ok", deployment.specification.name);
+    let mut path: &Path = Path::new(file_name.as_str());
+    let mut duplicate_deployment_count: i64 = 0;
+
+    if path.exists() {
+        if overwrite {
+            match std::fs::remove_file(path) {
+                Ok(_) => {}
+                Err(e) => { panic!("Unable to remove existing deployment file. Reason: \n{}", e) }
+            }
+        } else {
+            while path.exists() {
+                println!("Writing file");
+                duplicate_deployment_count += 1;
+                file_name = format!("{}({}).h2ok", deployment.specification.name, duplicate_deployment_count);
+                path = Path::new(file_name.as_str());
+            }
+        }
+    }
+    let mut file: File = match File::create(path) {
+        Ok(file) => { file }
+        Err(err) => {
+            println!("Unable to write deployment file '{}' - skipping. Reason: {}", path.to_str().unwrap(), err);
+            return;
+        }
+    };
+    file.write_all(serde_json::to_string(deployment).unwrap().as_bytes()).unwrap();
+}
+
+fn undeploy(deployment_descriptor: &Path) {
+    let (deployment, client): (Deployment, Client) = extract_existing_deployment(deployment_descriptor);
+    match k8s::undeploy_h2o(&client, &deployment) {
+        Ok(_) => {}
+        Err(deployment_errs) => {
+            for undeployed in deployment_errs.iter() {
+                print!("Unable to undeploy '{}' - skipping.", undeployed)
+            }
+        }
+    }
+    println!("Removed deployment '{}'.", deployment.specification.name);
+    remove_file(deployment_descriptor).unwrap();
+}
+
+fn ingress(deployment_descriptor: &Path) {
+    let (mut deployment, client): (Deployment, Client) = extract_existing_deployment(deployment_descriptor);
+
+    match k8s::deploy_ingress(&client, &mut deployment) {
+        Ok(_) => { persist_deployment(&deployment, true); }
+        Err(e) => {
+            panic!("Unable to create ingress for {} deployment. Reason: \n{}", &deployment.specification.name, e);
+        }
+    }
+}
+
+/// Extracts a deployment descriptor and a Client from a deployment descriptor file.
+/// It is assumed the caller has verified the given file exists - panics otherwise.
+/// If there is no Client described in the `deployment_descriptor`, it is assumed the one from the
+/// environment as defined by `KUBECONFIG` environment variable or some well-known places should be used,
+/// as such a kubeconfig was used to create the original deployment described in the file.
+fn extract_existing_deployment(deployment_descriptor: &Path) -> (Deployment, Client) {
+    let deployment_file = File::open(deployment_descriptor).unwrap();
     let deployment: Deployment = serde_json::from_reader(deployment_file).unwrap();
 
     // Attempt to use the very same kubeconfig to undeploy as was used to deploy
@@ -68,34 +133,6 @@ fn undeploy(deployment_descriptor_path: &Path) {
             k8s::from_kubeconfig(kubeconfig_path)
         }
     };
-    match k8s::undeploy_h2o(&client, &deployment) {
-        Ok(_) => {}
-        Err(deployment_errs) => {
-            for undeployed in deployment_errs.iter() {
-                print!("Unable to undeploy '{}' - skipping.", undeployed)
-            }
-        }
-    }
-    println!("Removed deployment '{}'.", deployment.specification.name);
-    remove_file(deployment_descriptor_path).unwrap();
-}
 
-fn persist_deployment(deployment: &Deployment) {
-    let mut file_name = format!("{}.h2ok", deployment.specification.name);
-    let mut path: &Path = Path::new(file_name.as_str());
-    let mut duplicate_deployment_count: i64 = 0;
-    while path.exists() {
-        println!("Writing file");
-        duplicate_deployment_count += 1;
-        file_name = format!("{}({}).h2ok", deployment.specification.name, duplicate_deployment_count);
-        path = Path::new(file_name.as_str());
-    }
-    let mut file: File = match File::create(path) {
-        Ok(file) => { file }
-        Err(err) => {
-            println!("Unable to write deployment file '{}' - skipping. Reason: {}", path.to_str().unwrap(), err);
-            return;
-        }
-    };
-    file.write_all(serde_json::to_string(deployment).unwrap().as_bytes()).unwrap();
+    return (deployment, client);
 }
