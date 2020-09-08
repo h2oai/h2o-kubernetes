@@ -90,19 +90,7 @@ fn persist_deployment(deployment: &Deployment, overwrite: bool) {
 }
 
 fn undeploy(deployment_descriptor: &Path) {
-    let deployment_file = File::open(deployment_descriptor).unwrap();
-    let deployment: Deployment = serde_json::from_reader(deployment_file).unwrap();
-
-    // Attempt to use the very same kubeconfig to undeploy as was used to deploy
-    let client: Client = match &deployment.specification.kubeconfig_path {
-        None => {
-            // No kubeconfig specified means the one from the environment should be used.
-            k8s::try_default().unwrap()
-        }
-        Some(kubeconfig_path) => {
-            k8s::from_kubeconfig(kubeconfig_path)
-        }
-    };
+    let (deployment, client): (Deployment, Client) = extract_existing_deployment(deployment_descriptor);
     match k8s::undeploy_h2o(&client, &deployment) {
         Ok(_) => {}
         Err(deployment_errs) => {
@@ -116,8 +104,24 @@ fn undeploy(deployment_descriptor: &Path) {
 }
 
 fn ingress(deployment_descriptor: &Path) {
+    let (mut deployment, client): (Deployment, Client) = extract_existing_deployment(deployment_descriptor);
+
+    match k8s::deploy_ingress(&client, &mut deployment) {
+        Ok(_) => { persist_deployment(&deployment, true); }
+        Err(e) => {
+            panic!("Unable to create ingress for {} deployment. Reason: \n{}", &deployment.specification.name, e);
+        }
+    }
+}
+
+/// Extracts a deployment descriptor and a Client from a deployment descriptor file.
+/// It is assumed the caller has verified the given file exists - panics otherwise.
+/// If there is no Client described in the `deployment_descriptor`, it is assumed the one from the
+/// environment as defined by `KUBECONFIG` environment variable or some well-known places should be used,
+/// as such a kubeconfig was used to create the original deployment described in the file.
+fn extract_existing_deployment(deployment_descriptor: &Path) -> (Deployment, Client) {
     let deployment_file = File::open(deployment_descriptor).unwrap();
-    let mut deployment: Deployment = serde_json::from_reader(deployment_file).unwrap();
+    let deployment: Deployment = serde_json::from_reader(deployment_file).unwrap();
 
     // Attempt to use the very same kubeconfig to undeploy as was used to deploy
     let client: Client = match &deployment.specification.kubeconfig_path {
@@ -130,10 +134,5 @@ fn ingress(deployment_descriptor: &Path) {
         }
     };
 
-    match k8s::deploy_ingress(&client, &mut deployment) {
-        Ok(_) => { persist_deployment(&deployment, true); }
-        Err(e) => {
-            panic!("Unable to create ingress for {} deployment. Reason: \n{}", &deployment.specification.name, e);
-        }
-    }
+    return (deployment, client);
 }
