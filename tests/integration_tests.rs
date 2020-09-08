@@ -1,21 +1,7 @@
 use assert_cmd::assert::Assert;
 use assert_cmd::Command;
 
-const expected_generat_help: &str = r#"H2O Kubernetes CLI \d+.\d+.\d+.*
-
-USAGE:
-    h2ok \[SUBCOMMAND\]
-
-FLAGS:
-    -h, --help       Prints help information
-    -V, --version    Prints version information
-
-SUBCOMMANDS:
-    deploy      Deploys an H2O cluster into Kubernetes. Once successfully deployed a deployment descriptor file with
-                cluster name is saved.Such a file can be used to undeploy the cluster or built on top of by adding
-                additional services.*
-    help        Prints this message or the help of the given subcommand\(s\).*
-    undeploy    Undeploys an existing H2O cluster from Kubernetes"#;
+const EXPECTED_GENERAL_HELP: &str = r#"H2O Kubernetes CLI \d+.\d+.\d+.*"#;
 
 #[test]
 fn test_general_help() {
@@ -24,7 +10,7 @@ fn test_general_help() {
         .assert();
     assert.success()
         .code(0)
-        .stdout(predicates::str::is_match(expected_generat_help).unwrap());
+        .stdout(predicates::str::is_match(EXPECTED_GENERAL_HELP).unwrap());
 }
 
 /// If no `-h` or `-help` or any subcommand is provided to `h2ok`, general help should be displayed.
@@ -34,7 +20,7 @@ fn test_general_help_no_flag() {
     let assert: Assert = cmd.assert();
 
     assert.failure()
-        .stderr(predicates::str::is_match(expected_generat_help).unwrap());
+        .stderr(predicates::str::is_match(EXPECTED_GENERAL_HELP).unwrap());
 }
 
 #[test]
@@ -43,33 +29,7 @@ fn test_deployment_help() {
     let assert: Assert = cmd.args(&["deploy", "-h"])
         .assert();
 
-    let expected_output_pattern: &str = r#"h2ok-deploy.*
-Deploys an H2O cluster into Kubernetes\. Once successfully deployed a deployment descriptor file with cluster name is
-saved\.Such a file can be used to undeploy the cluster or built on top of by adding additional services\.
-
-USAGE:
-    h2ok deploy \[OPTIONS\] --cluster_size <cluster_size>
-
-FLAGS:
-    -h, --help       Prints help information
-    -V, --version    Prints version information
-
-OPTIONS:
-    -s, --cluster_size <cluster_size>              Number of H2O Nodes in the cluster. Up to 2\^32.
-        --cpus <cpus>                              Number of CPUs allocated for each H2O node. \[default: 1\]
-    -k, --kubeconfig <kubeconfig>
-            Path to 'kubeconfig' yaml file\. If not specified, well-known locations are scanned for kubeconfig\.
-
-    -m, --memory <memory>
-            Amount of memory allocated by each H2O node - in a format accepted by K8S, e.g. 4Gi. \[default: 1Gi\]
-
-    -p, --memory_percentage <memory_percentage>
-            Memory percentage allocated by H2O inside the container. <0,100>. Defaults to 50% to make space for XGBoost.
-            \[default: 50\]
-    -c, --cluster_name <name>
-            Name of the H2O cluster deployment. Used as prefix for K8S entities. Generated if not specified.
-
-    -n, --namespace <namespace>                    Kubernetes cluster namespace to connect to. \[default: default\]"#;
+    let expected_output_pattern: &str = r#"h2ok-deploy.*"#;
 
     assert.success()
         .code(0)
@@ -83,19 +43,7 @@ fn test_undeploy_help() {
         .assert();
 
     let expected_output_pattern: &str = r#"h2ok-undeploy.*
-Undeploys an existing H2O cluster from Kubernetes
-
-USAGE:
-    h2ok undeploy \[OPTIONS\]
-
-FLAGS:
-    -h, --help       Prints help information
-    -V, --version    Prints version information
-
-OPTIONS:
-    -f, --file <file>    H2O deployment descriptor file path\. If not specified, attempt is made to parse deployment
-                         descriptor path from stdin\.
-"#;
+Undeploys an existing H2O cluster from Kubernetes.*"#;
 
     assert.success()
         .code(0)
