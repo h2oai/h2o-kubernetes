@@ -1,18 +1,20 @@
 extern crate clap;
 
-use std::fs::{File, remove_file};
+use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 
+use atty::Stream;
 use kube::{Client, Error};
 
-use crate::cli::{Command};
+use crate::cli::Command;
 use crate::k8s::{Deployment, DeploymentSpecification};
 
 mod cli;
 mod k8s;
 #[cfg(test)]
 mod tests;
+
 
 fn main() {
     let command = match cli::get_command() {
@@ -52,14 +54,19 @@ fn deploy(deployment_specification: DeploymentSpecification) {
             panic!("Unable to deploy H2O cluster. Error:\n{}", error);
         }
     };
+    let persisted_filename = persist_deployment(&deployment, false).unwrap();
 
-    print!("{}.h2ok", deployment.specification.name);
-    persist_deployment(&deployment, false);
+    if running_on_terminal() {
+        println!("Deployment of '{}' completed successfully.", deployment.specification.name);
+        println!("To undeploy, use the 'h2ok undeploy -f {}' command.", persisted_filename);
+    } else {
+        // If not running on a terminal, print only the deployment name.
+        print!("{}.h2ok", deployment.specification.name);
+    }
 }
 
 ///Persists a Deployment into current workdir. Name of the resulting file is the name of the deployment name followed by `.h2ok` suffix.
-///
-fn persist_deployment(deployment: &Deployment, overwrite: bool) {
+fn persist_deployment(deployment: &Deployment, overwrite: bool) -> Result<String, std::io::Error> {
     let mut file_name = format!("{}.h2ok", deployment.specification.name);
     let mut path: &Path = Path::new(file_name.as_str());
     let mut duplicate_deployment_count: i64 = 0;
@@ -83,10 +90,11 @@ fn persist_deployment(deployment: &Deployment, overwrite: bool) {
         Ok(file) => { file }
         Err(err) => {
             println!("Unable to write deployment file '{}' - skipping. Reason: {}", path.to_str().unwrap(), err);
-            return;
+            return Err(err);
         }
     };
     file.write_all(serde_json::to_string(deployment).unwrap().as_bytes()).unwrap();
+    return Ok(String::from(path.to_str().unwrap()));
 }
 
 fn undeploy(deployment_descriptor: &Path) {
@@ -100,14 +108,29 @@ fn undeploy(deployment_descriptor: &Path) {
         }
     }
     println!("Removed deployment '{}'.", deployment.specification.name);
-    remove_file(deployment_descriptor).unwrap();
+    std::fs::remove_file(deployment_descriptor).unwrap();
 }
 
 fn ingress(deployment_descriptor: &Path) {
     let (mut deployment, client): (Deployment, Client) = extract_existing_deployment(deployment_descriptor);
 
     match k8s::deploy_ingress(&client, &mut deployment) {
-        Ok(_) => { persist_deployment(&deployment, true); }
+        Ok(_) => {
+            let deployment_file_name: String = persist_deployment(&deployment, true).unwrap();
+            if running_on_terminal() {
+                println!("Ingress '{}' deployed successfully.", &deployment.specification.name);
+                let ingress_ip: Option<String> = k8s::ingress::any_ip(deployment.ingresses.last().unwrap());
+                let ingress_path: Option<String> = k8s::ingress::any_path(deployment.ingresses.last().unwrap());
+
+                if ingress_ip.is_some() && ingress_path.is_some() {
+                    println!("You may now use 'h2o.connect()' to connect to the H2O cluster:");
+                    println!("Python: 'h2o.connect(url=\"http://{}{}\")'", ingress_ip.as_ref().unwrap(), ingress_path.as_ref().unwrap());
+                    println!("R: 'h2o.connect(ip = \"{}\", context_path = \"{}\", port=80)'", ingress_ip.as_ref().unwrap(), ingress_path.unwrap().strip_prefix("/").unwrap())
+                }
+            } else {
+                print!("{}", deployment_file_name);
+            }
+        }
         Err(e) => {
             panic!("Unable to create ingress for {} deployment. Reason: \n{}", &deployment.specification.name, e);
         }
@@ -135,4 +158,9 @@ fn extract_existing_deployment(deployment_descriptor: &Path) -> (Deployment, Cli
     };
 
     return (deployment, client);
+}
+
+/// Returns true if the CLI has been invoked from a TTY, otherwise false.
+fn running_on_terminal() -> bool {
+    atty::is(Stream::Stdout)
 }
