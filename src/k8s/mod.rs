@@ -5,17 +5,19 @@ use std::path::{Path, PathBuf};
 
 use k8s_openapi::api::apps::v1::StatefulSet;
 use k8s_openapi::api::core::v1::Service;
+use k8s_openapi::api::networking::v1beta1::Ingress;
 use kube::Client;
 use serde::{Deserialize, Serialize};
 use tokio::runtime::Runtime;
-
+use self::futures::{StreamExt, TryStreamExt};
 use self::futures::executor::block_on;
 use self::kube::{Api, Config, Error};
-use self::kube::api::{DeleteParams, Meta, PostParams};
+use self::kube::api::{DeleteParams, ListParams, Meta, PostParams, WatchEvent};
 use self::kube::config::{Kubeconfig, KubeConfigOptions};
-use k8s_openapi::api::networking::v1beta1::Ingress;
+use crate::k8s::ingress::any_ip;
 
 mod templates;
+pub mod ingress;
 
 pub fn from_kubeconfig(kubeconfig_path: &Path) -> Client {
     let kubeconfig: Kubeconfig = Kubeconfig::read_from(kubeconfig_path).unwrap();
@@ -159,24 +161,43 @@ pub fn deploy_ingress(client: &Client, deployment: &mut Deployment) -> Result<()
     let mut tokio_runtime: Runtime = tokio::runtime::Runtime::new().unwrap();
 
     let api: Api<Ingress> = Api::namespaced(client.clone(), &deployment.specification.namespace);
-    let ingress: Ingress = templates::h2o_ingress(&deployment.specification.name, &deployment.specification.namespace);
-    match tokio_runtime.block_on(api.create(&PostParams::default(), &ingress)) {
+    let ingress_template: Ingress = templates::h2o_ingress(&deployment.specification.name, &deployment.specification.namespace);
+
+    return match tokio_runtime.block_on(api.create(&PostParams::default(), &ingress_template)) {
         Ok(ingress) => {
-            deployment.ingresses.push(ingress);
+            let ingress_name : String = ingress.meta().name.as_ref().unwrap().clone();
+            let mut created_ingress: Ingress = ingress;
+            let lp: ListParams = ListParams::default()
+                .fields(&format!("metadata.name={}", &ingress_name))
+                .timeout(3);
+            let mut event_stream = tokio_runtime.block_on(api.watch(&lp, "0")).unwrap().boxed();
+
+            while let Some(status) = tokio_runtime.block_on(event_stream.try_next()).unwrap() {
+                match status {
+                    WatchEvent::Modified(up_to_date_ingress) => {
+                        created_ingress = up_to_date_ingress;
+                        if any_ip(&created_ingress).is_some(){
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            deployment.ingresses.push(created_ingress);
             return Ok(());
         }
-        Err(e) => {
-            return Err(e);
+        Err(err) => {
+            Err(err)
         }
-    }
+    };
 }
-
 #[cfg(test)]
 mod tests {
     use std::path::Path;
 
     use crate::k8s::{Deployment, DeploymentSpecification};
     use crate::tests::{kubeconfig_location_panic, TEST_CLUSTER_NAMESPACE};
+
     use super::kube::Client;
 
     #[test]
