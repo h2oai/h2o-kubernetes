@@ -124,7 +124,7 @@ fn ingress(deployment_descriptor: &Path) {
 
                 if ingress_ip.is_some() && ingress_path.is_some() {
                     println!("You may now use 'h2o.connect()' to connect to the H2O cluster:");
-                    println!("Python: 'h2o.connect(url=\"http://{}{}\")'", ingress_ip.as_ref().unwrap(), ingress_path.as_ref().unwrap());
+                    println!("Python: 'h2o.connect(url=\"http://{}:80{}\")'", ingress_ip.as_ref().unwrap(), ingress_path.as_ref().unwrap());
                     println!("R: 'h2o.connect(ip = \"{}\", context_path = \"{}\", port=80)'", ingress_ip.as_ref().unwrap(), ingress_path.unwrap().strip_prefix("/").unwrap())
                 }
             } else {

@@ -19,7 +19,7 @@ There are three basic commands:
 Deploys an H2O cluster into Kubernetes by creating all the necessary components. Once successfully deployed a deployment descriptor file with cluster name is saved. Such a file can be used to undeploy the H2O cluster or built on top of by adding additional services.
 If deployment of any of the component fails a rollback of existing components is attempted automatically. If a cluster name is not provided, one is generated automatically.
  
-**Mininal example**: `h2ok deploy --cluster-size 3`.
+**Mininal example**: `h2ok deploy --cluster_size 3`.
 
 **Minimal example - custom kubeconfig and namespace**: `h2ok deploy --cluster-size 3 --kubeconfig /etc/rancher/k3s/k3s.yaml --namespace default`
 
