@@ -4,6 +4,8 @@
 
 A command line tool to ease the deployment (and undeployment) of H2O open-source machine learning platform [H2O-3](https://github.com/h2oai/h2o-3) to Kubernetes. Currently in beta, with stable basic deployment/undeployment features. Official [H2O Kubernetes Docker images](https://hub.docker.com/r/h2oai/h2o-open-source-k8s) are used.
 
+[Download for Mac/Linux/Windows](https://github.com/h2oai/h2o-kubernetes/releases).
+
 ## Usage
 
 ![H2O Usage in console](h2ok.gif)
