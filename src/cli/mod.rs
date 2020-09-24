@@ -1,14 +1,13 @@
+use std::io;
+use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
-use clap::{App, Arg, ArgMatches, SubCommand, AppSettings};
+use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
 use names::Generator;
 use num::Num;
 use regex::Regex;
 
-use crate::k8s::DeploymentSpecification;
-use std::str::FromStr;
-use std::io;
-use std::io::Read;
 use crate::cli::CommandErrorKind::{MissingDeploymentDescriptor, UnreachableDeploymentDescriptor};
 
 const APP_NAME: &str = "H2O Kubernetes CLI";
@@ -24,8 +23,8 @@ pub fn get_command() -> Result<Command, UserInputError> {
             let mut generator: Generator = Generator::default();
             return format!("h2o-{}", generator.next().unwrap());
         });
+        let namespace: Option<String> = extract_string(deploy_args, "namespace");
         // Args below have defaults, it is therefore safe to unwrap.
-        let namespace: String = extract_string(deploy_args, "namespace").unwrap();
         let cluster_size: u32 = extract_num(deploy_args, "cluster_size").unwrap();
         let jvm_memory_percentage: u8 = extract_num(deploy_args, "memory_percentage").unwrap();
         let memory: String = extract_string(deploy_args, "memory").unwrap();
@@ -35,11 +34,11 @@ pub fn get_command() -> Result<Command, UserInputError> {
             Some(kubeconfig) => { Some(PathBuf::from(kubeconfig)) }
         };
 
-        let deployment: DeploymentSpecification = DeploymentSpecification::new(deployment_name, namespace, jvm_memory_percentage,
-                                                                               memory, num_cpus, cluster_size, kubeconfig_path);
+        let deployment: UserDeploymentSpecification = UserDeploymentSpecification::new(deployment_name, namespace, jvm_memory_percentage,
+                                                                                       memory, num_cpus, cluster_size, kubeconfig_path);
         return Ok(Command::Deployment(deployment));
     } else if let Some(undeploy_args) = args.subcommand_matches("undeploy") {
-        match undeploy_args.value_of("file") {
+        return match undeploy_args.value_of("file") {
             None => {
                 // If there is no file passed as an argument, try to parse file name from stdin.
                 let mut deployment_path_stdin_buf = String::new();
@@ -49,31 +48,31 @@ pub fn get_command() -> Result<Command, UserInputError> {
                 }
                 let deployment_descriptor_path: PathBuf = PathBuf::from(&deployment_path_stdin_buf);
                 if deployment_descriptor_path.exists() && deployment_descriptor_path.is_file() {
-                    return Ok(Command::Undeploy(deployment_descriptor_path));
+                    Ok(Command::Undeploy(deployment_descriptor_path))
                 } else {
                     let mut pwd_relative_path: PathBuf = std::env::current_dir().unwrap();
                     pwd_relative_path.push(deployment_descriptor_path);
 
                     if pwd_relative_path.exists() && pwd_relative_path.is_file() {
-                        return Ok(Command::Undeploy(pwd_relative_path));
+                        Ok(Command::Undeploy(pwd_relative_path))
                     } else {
-                        return Err(UserInputError::new(UnreachableDeploymentDescriptor));
+                        Err(UserInputError::new(UnreachableDeploymentDescriptor))
                     }
                 }
             }
             Some(file) => {
-                return Ok(Command::Undeploy(PathBuf::from(file)));
+                Ok(Command::Undeploy(PathBuf::from(file)))
             }
         };
     } else if let Some(ingress_args) = args.subcommand_matches("ingress") {
-        match ingress_args.value_of("file") {
+        return match ingress_args.value_of("file") {
             None => {
-                return Err(UserInputError::new(UnreachableDeploymentDescriptor));
+                Err(UserInputError::new(UnreachableDeploymentDescriptor))
             }
             Some(file) => {
-                return Ok(Command::Ingress(PathBuf::from(file))); // Safe to do, as the file is checked for existence
+                Ok(Command::Ingress(PathBuf::from(file))) // Safe to do, as the file is checked for existence
             }
-        }
+        };
     } else {
         panic!("Unknown command.");
     }
@@ -81,9 +80,32 @@ pub fn get_command() -> Result<Command, UserInputError> {
 
 /// Commands issuable by the user.
 pub enum Command {
-    Deployment(DeploymentSpecification),
+    Deployment(UserDeploymentSpecification),
     Undeploy(PathBuf),
     Ingress(PathBuf),
+}
+
+pub struct UserDeploymentSpecification {
+    /// Name of the deployment. If not provided by the user, the value is randomly generated.
+    pub name: String,
+    /// Namespace to deploy to - if not provided, an attempt to search in well-known locations is made.
+    pub namespace: Option<String>,
+    /// Memory percentage to allocate by the JVM running H2O inside the docker container.
+    pub memory_percentage: u8,
+    /// Total memory for each H2O node. Effectively a pod memory request and limit.
+    pub memory: String,
+    /// Number of CPUs allocated for each H2O node. Effectively a pod CPU request and limit.
+    pub num_cpu: u32,
+    /// Total count of H2O nodes inside the cluster created.
+    pub num_h2o_nodes: u32,
+    /// Kubeconfig - provided optionally. There are well-known standardized locations to look for Kubeconfig, therefore optional.
+    pub kubeconfig_path: Option<PathBuf>,
+}
+
+impl UserDeploymentSpecification {
+    pub fn new(name: String, namespace: Option<String>, memory_percentage: u8, memory: String, num_cpu: u32, num_h2o_nodes: u32, kubeconfig_path: Option<PathBuf>) -> Self {
+        UserDeploymentSpecification { name, namespace, memory_percentage, memory, num_cpu, num_h2o_nodes, kubeconfig_path }
+    }
 }
 
 
@@ -161,9 +183,8 @@ fn build_app<'a>() -> App<'a, 'a> {
             .arg(Arg::with_name("namespace")
                 .long("namespace")
                 .short("n")
-                .help("Kubernetes cluster namespace to connect to.")
+                .help("Kubernetes cluster namespace to connect to. If not specified, kubeconfig default is used.")
                 .number_of_values(1)
-                .default_value("default")
             )
             .arg(Arg::with_name("name")
                 .long("cluster_name")
@@ -290,7 +311,7 @@ mod tests {
         let args_with_kubeconfig: Vec<&str> = vec!["h2ok", "deploy", "--cluster_size", "1"];
         let matches: ArgMatches = app.get_matches_from(args_with_kubeconfig);
         let deploy: &ArgMatches = matches.subcommand_matches("deploy").unwrap();
-        assert_eq!("default", deploy.value_of("namespace").unwrap());
+        assert!(deploy.value_of("namespace").is_none());
 
         // Custom namespace provided
         let app: App = super::build_app();

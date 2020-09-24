@@ -9,25 +9,31 @@ use k8s_openapi::api::networking::v1beta1::Ingress;
 use kube::Client;
 use serde::{Deserialize, Serialize};
 use tokio::runtime::Runtime;
+
+use crate::k8s::ingress::any_ip;
+
 use self::futures::{StreamExt, TryStreamExt};
 use self::futures::executor::block_on;
 use self::kube::{Api, Config, Error};
 use self::kube::api::{DeleteParams, ListParams, Meta, PostParams, WatchEvent};
 use self::kube::config::{Kubeconfig, KubeConfigOptions};
-use crate::k8s::ingress::any_ip;
 
 mod templates;
 pub mod ingress;
 
-pub fn from_kubeconfig(kubeconfig_path: &Path) -> Client {
+pub fn from_kubeconfig(kubeconfig_path: &Path) -> (Client, String) {
     let kubeconfig: Kubeconfig = Kubeconfig::read_from(kubeconfig_path).unwrap();
     let config: Config = block_on(Config::from_custom_kubeconfig(kubeconfig, &KubeConfigOptions::default())).unwrap();
-    let client = Client::new(config);
-    return client;
+    let kubeconfig_namespace: String = config.default_ns.clone();
+    let client: Client = Client::new(config);
+    return (client, kubeconfig_namespace);
 }
 
-pub fn try_default() -> Result<Client, Error> {
-    block_on(Client::try_default())
+pub fn try_default() -> Result<(Client, String), Error> {
+    let config = block_on(Config::infer())?;
+    let kubeconfig_namespace: String = config.default_ns.clone();
+    let client = Client::new(config);
+    return Result::Ok((client, kubeconfig_namespace));
 }
 
 /// Deployment descriptor - contains deployment specification as defined by the user/called
@@ -165,7 +171,7 @@ pub fn deploy_ingress(client: &Client, deployment: &mut Deployment) -> Result<()
 
     return match tokio_runtime.block_on(api.create(&PostParams::default(), &ingress_template)) {
         Ok(ingress) => {
-            let ingress_name : String = ingress.meta().name.as_ref().unwrap().clone();
+            let ingress_name: String = ingress.meta().name.as_ref().unwrap().clone();
             let mut created_ingress: Ingress = ingress;
             let lp: ListParams = ListParams::default()
                 .fields(&format!("metadata.name={}", &ingress_name))
@@ -176,7 +182,7 @@ pub fn deploy_ingress(client: &Client, deployment: &mut Deployment) -> Result<()
                 match status {
                     WatchEvent::Modified(up_to_date_ingress) => {
                         created_ingress = up_to_date_ingress;
-                        if any_ip(&created_ingress).is_some(){
+                        if any_ip(&created_ingress).is_some() {
                             break;
                         }
                     }
@@ -191,12 +197,13 @@ pub fn deploy_ingress(client: &Client, deployment: &mut Deployment) -> Result<()
         }
     };
 }
+
 #[cfg(test)]
 mod tests {
     use std::path::Path;
 
     use crate::k8s::{Deployment, DeploymentSpecification};
-    use crate::tests::{kubeconfig_location_panic, TEST_CLUSTER_NAMESPACE};
+    use crate::tests::kubeconfig_location_panic;
 
     use super::kube::Client;
 
@@ -210,11 +217,8 @@ mod tests {
 
     #[test]
     fn test_deploy_h2o() {
-        let kubeconfig_location: String = kubeconfig_location_panic();
-        let kubeconfig_path: &Path = Path::new(&kubeconfig_location);
-        assert!(kubeconfig_path.exists());
-        let client: Client = super::from_kubeconfig(kubeconfig_path);
-        let deployment_specification: DeploymentSpecification = DeploymentSpecification::new("h2o-k8s-test-cluster".to_string(), TEST_CLUSTER_NAMESPACE.to_string(),
+        let (client, namespace): (Client, String) = super::try_default().unwrap();
+        let deployment_specification: DeploymentSpecification = DeploymentSpecification::new("h2o-k8s-test-cluster".to_string(), namespace,
                                                                                              80, "256Mi".to_string(), 2, 2, None);
         let mut deployment: Deployment = super::deploy_h2o_cluster(&client, deployment_specification).unwrap();
         assert_eq!(1, deployment.services.len());
