@@ -5,9 +5,9 @@ use std::io::Write;
 use std::path::Path;
 
 use atty::Stream;
-use kube::{Client, Error};
+use kube::Client;
 
-use crate::cli::Command;
+use crate::cli::{Command, UserDeploymentSpecification};
 use crate::k8s::{Deployment, DeploymentSpecification};
 
 mod cli;
@@ -15,9 +15,8 @@ mod k8s;
 #[cfg(test)]
 mod tests;
 
-
 fn main() {
-    let command = match cli::get_command() {
+    let command: Command = match cli::get_command() {
         Ok(cmd) => { cmd }
         Err(error) => {
             eprintln!("Unable to process user input: {:?}", error);
@@ -37,18 +36,22 @@ fn main() {
     };
 }
 
-fn deploy(deployment_specification: DeploymentSpecification) {
-    let client: Client = if let Some(kubeconfig) = &deployment_specification.kubeconfig_path {
+fn deploy(user_deployment_spec: UserDeploymentSpecification) {
+    let (client, namespace): (Client, String) = if let Some(kubeconfig) = &user_deployment_spec.kubeconfig_path {
         k8s::from_kubeconfig(kubeconfig.as_path())
     } else {
-        let default_client: Result<Client, Error> = k8s::try_default();
-        match default_client {
-            Ok(cl) => { cl }
+        match k8s::try_default() {
+            Ok(client_namespace) => {
+                client_namespace
+            }
             Err(_) => { panic!("No kubeconfig provided by the user and search in well-known kubeconfig locations failed") }
         }
     };
 
-    let deployment: Deployment = match k8s::deploy_h2o_cluster(&client, deployment_specification) {
+    let deployment_spec: DeploymentSpecification = DeploymentSpecification::new(user_deployment_spec.name, namespace, user_deployment_spec.memory_percentage, user_deployment_spec.memory, user_deployment_spec.num_cpu, user_deployment_spec.num_h2o_nodes,
+                                                                                user_deployment_spec.kubeconfig_path);
+
+    let deployment: Deployment = match k8s::deploy_h2o_cluster(&client, deployment_spec) {
         Ok(successful_deployment) => { successful_deployment }
         Err(error) => {
             panic!("Unable to deploy H2O cluster. Error:\n{}", error);
@@ -147,7 +150,7 @@ fn extract_existing_deployment(deployment_descriptor: &Path) -> (Deployment, Cli
     let deployment: Deployment = serde_json::from_reader(deployment_file).unwrap();
 
     // Attempt to use the very same kubeconfig to undeploy as was used to deploy
-    let client: Client = match &deployment.specification.kubeconfig_path {
+    let (client, _): (Client, String) = match &deployment.specification.kubeconfig_path {
         None => {
             // No kubeconfig specified means the one from the environment should be used.
             k8s::try_default().unwrap()
