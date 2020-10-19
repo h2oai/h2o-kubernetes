@@ -1,4 +1,6 @@
 extern crate clap;
+extern crate deployment;
+
 
 use std::fs::File;
 use std::io::Write;
@@ -7,13 +9,10 @@ use std::path::Path;
 use atty::Stream;
 use kube::Client;
 
-use crate::cli::{Command, UserDeploymentSpecification};
-use crate::k8s::{Deployment, DeploymentSpecification};
+use cli::{Command, UserDeploymentSpecification};
+use deployment::{Deployment, DeploymentSpecification};
 
 mod cli;
-mod k8s;
-#[cfg(test)]
-mod tests;
 
 fn main() {
     let command: Command = match cli::get_command() {
@@ -38,9 +37,9 @@ fn main() {
 
 fn deploy(user_deployment_spec: UserDeploymentSpecification) {
     let (client, namespace): (Client, String) = if let Some(kubeconfig) = &user_deployment_spec.kubeconfig_path {
-        k8s::from_kubeconfig(kubeconfig.as_path())
+        deployment::from_kubeconfig(kubeconfig.as_path())
     } else {
-        match k8s::try_default() {
+        match deployment::try_default() {
             Ok(client_namespace) => {
                 client_namespace
             }
@@ -51,7 +50,7 @@ fn deploy(user_deployment_spec: UserDeploymentSpecification) {
     let deployment_spec: DeploymentSpecification = DeploymentSpecification::new(user_deployment_spec.name, namespace, user_deployment_spec.memory_percentage, user_deployment_spec.memory, user_deployment_spec.num_cpu, user_deployment_spec.num_h2o_nodes,
                                                                                 user_deployment_spec.kubeconfig_path);
 
-    let deployment: Deployment = match k8s::deploy_h2o_cluster(&client, deployment_spec) {
+    let deployment: Deployment = match deployment::deploy_h2o_cluster(&client, deployment_spec) {
         Ok(successful_deployment) => { successful_deployment }
         Err(error) => {
             panic!("Unable to deploy H2O cluster. Error:\n{}", error);
@@ -102,7 +101,7 @@ fn persist_deployment(deployment: &Deployment, overwrite: bool) -> Result<String
 
 fn undeploy(deployment_descriptor: &Path) {
     let (deployment, client): (Deployment, Client) = extract_existing_deployment(deployment_descriptor);
-    match k8s::undeploy_h2o(&client, &deployment) {
+    match deployment::undeploy_h2o(&client, &deployment) {
         Ok(_) => {}
         Err(deployment_errs) => {
             for undeployed in deployment_errs.iter() {
@@ -117,13 +116,13 @@ fn undeploy(deployment_descriptor: &Path) {
 fn ingress(deployment_descriptor: &Path) {
     let (mut deployment, client): (Deployment, Client) = extract_existing_deployment(deployment_descriptor);
 
-    match k8s::deploy_ingress(&client, &mut deployment) {
+    match deployment::deploy_ingress(&client, &mut deployment) {
         Ok(_) => {
             let deployment_file_name: String = persist_deployment(&deployment, true).unwrap();
             if running_on_terminal() {
                 println!("Ingress '{}' deployed successfully.", &deployment.specification.name);
-                let ingress_ip: Option<String> = k8s::ingress::any_ip(deployment.ingresses.last().unwrap());
-                let ingress_path: Option<String> = k8s::ingress::any_path(deployment.ingresses.last().unwrap());
+                let ingress_ip: Option<String> = deployment::ingress::any_ip(deployment.ingresses.last().unwrap());
+                let ingress_path: Option<String> = deployment::ingress::any_path(deployment.ingresses.last().unwrap());
 
                 if ingress_ip.is_some() && ingress_path.is_some() {
                     println!("You may now use 'h2o.connect()' to connect to the H2O cluster:");
@@ -153,10 +152,10 @@ fn extract_existing_deployment(deployment_descriptor: &Path) -> (Deployment, Cli
     let (client, _): (Client, String) = match &deployment.specification.kubeconfig_path {
         None => {
             // No kubeconfig specified means the one from the environment should be used.
-            k8s::try_default().unwrap()
+            deployment::try_default().unwrap()
         }
         Some(kubeconfig_path) => {
-            k8s::from_kubeconfig(kubeconfig_path)
+            deployment::from_kubeconfig(kubeconfig_path)
         }
     };
 

@@ -3,20 +3,17 @@ extern crate kube;
 
 use std::path::{Path, PathBuf};
 
+use futures::{StreamExt, TryStreamExt};
+use futures::executor::block_on;
 use k8s_openapi::api::apps::v1::StatefulSet;
 use k8s_openapi::api::core::v1::Service;
 use k8s_openapi::api::networking::v1beta1::Ingress;
+use kube::{Api, Config, Error};
+use kube::api::{DeleteParams, ListParams, Meta, PostParams, WatchEvent};
 use kube::Client;
+use kube::config::{Kubeconfig, KubeConfigOptions};
 use serde::{Deserialize, Serialize};
 use tokio::runtime::Runtime;
-
-use crate::k8s::ingress::any_ip;
-
-use self::futures::{StreamExt, TryStreamExt};
-use self::futures::executor::block_on;
-use self::kube::{Api, Config, Error};
-use self::kube::api::{DeleteParams, ListParams, Meta, PostParams, WatchEvent};
-use self::kube::config::{Kubeconfig, KubeConfigOptions};
 
 mod templates;
 pub mod ingress;
@@ -182,7 +179,7 @@ pub fn deploy_ingress(client: &Client, deployment: &mut Deployment) -> Result<()
                 match status {
                     WatchEvent::Modified(up_to_date_ingress) => {
                         created_ingress = up_to_date_ingress;
-                        if any_ip(&created_ingress).is_some() {
+                        if ingress::any_ip(&created_ingress).is_some() {
                             break;
                         }
                     }
@@ -200,19 +197,19 @@ pub fn deploy_ingress(client: &Client, deployment: &mut Deployment) -> Result<()
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
+    extern crate tests_common;
 
-    use crate::k8s::{Deployment, DeploymentSpecification};
-    use crate::tests::kubeconfig_location_panic;
+    use std::path::{PathBuf};
 
+    use super::{Deployment, DeploymentSpecification};
     use super::kube::Client;
+
+    use self::tests_common::kubeconfig_location_panic;
 
     #[test]
     fn test_from_kubeconfig() {
-        let kubeconfig_location: String = kubeconfig_location_panic();
-        let kubeconfig_path: &Path = Path::new(&kubeconfig_location);
-        assert!(kubeconfig_path.exists());
-        super::from_kubeconfig(kubeconfig_path);
+        let kubeconfig_location: PathBuf = kubeconfig_location_panic();
+        super::from_kubeconfig(kubeconfig_location.as_path());
     }
 
     #[test]

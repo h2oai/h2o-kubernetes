@@ -281,17 +281,22 @@ fn validate_memory(input: String) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    extern crate tests_common;
+
+    use std::path::PathBuf;
+
     use clap::{App, ArgMatches};
 
-    use crate::tests::kubeconfig_location_panic;
+    use tests_common::kubeconfig_location_panic;
 
     #[test]
     fn test_kubeconfig_path() {
-        let kubeconfig_location: String = kubeconfig_location_panic();
+        let kubeconfig_location: PathBuf = kubeconfig_location_panic();
+        let kubeconfig_location: &str = kubeconfig_location.to_str().unwrap();
 
         // Existing kubeconfig
         let app: App = super::build_app();
-        let args_with_kubeconfig: Vec<&str> = vec!["h2ok", "deploy", "--kubeconfig", kubeconfig_location.as_str(), "--cluster_size", "1"];
+        let args_with_kubeconfig: Vec<&str> = vec!["h2ok", "deploy", "--kubeconfig", kubeconfig_location, "--cluster_size", "1"];
         let matches: ArgMatches = app.get_matches_from(args_with_kubeconfig);
         let deploy: &ArgMatches = matches.subcommand_matches("deploy").unwrap();
         assert!(deploy.is_present("kubeconfig"));
