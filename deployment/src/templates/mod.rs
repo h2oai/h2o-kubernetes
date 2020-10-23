@@ -3,9 +3,11 @@
 /// respective Kubernetes component.
 use k8s_openapi::api::apps::v1::StatefulSet;
 use k8s_openapi::api::core::v1::Service;
-use serde_yaml;
 use k8s_openapi::api::networking::v1beta1::Ingress;
+use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
+use serde_yaml;
 
+// TODO: Move each resource to a respective submodule
 const STATEFUL_SET_TEMPLATE: &str = r#"
 apiVersion: apps/v1
 kind: StatefulSet
@@ -121,4 +123,52 @@ pub fn h2o_ingress(name: &str, namespace: &str) -> Ingress {
 
     let ingress: Ingress = serde_yaml::from_str(&ingress_definition).unwrap();
     return ingress;
+}
+
+
+const H2O_RESOURCE_TEMPLATE: &str = r#"
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: h2os.h2o.ai
+spec:
+  group: h2o.ai
+  names:
+    kind: H2O
+    plural: h2os
+    singular: h2o
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                nodes:
+                  type: integer
+                resources:
+                  type: object
+                  properties:
+                    cpu:
+                      type: integer
+                      minimum: 1
+                    memory:
+                      type: string
+                      pattern: "^([+-]?[0-9.]+)([eEinumkKMGTP]*[-+]?[0-9]*)$"
+                    memoryPercentage:
+                      type: integer
+                      minimum: 1
+                      maximum: 100
+                  required: ["cpu", "memory"]
+              required: ["nodes", "resources"]
+"#;
+// TODO: Fill the pattern dynamically from a unified place. It is already present in CLI - make it part of Deployment ?
+
+pub fn h2o_crd() -> CustomResourceDefinition {
+    return serde_yaml::from_str(H2O_RESOURCE_TEMPLATE).unwrap();
 }

@@ -16,7 +16,9 @@ use serde::{Deserialize, Serialize};
 use tokio::runtime::Runtime;
 
 mod templates;
+pub mod crd;
 pub mod ingress;
+
 
 pub fn from_kubeconfig(kubeconfig_path: &Path) -> (Client, String) {
     let kubeconfig: Kubeconfig = Kubeconfig::read_from(kubeconfig_path).unwrap();
@@ -77,24 +79,21 @@ impl DeploymentSpecification {
 }
 
 /// Deploys an H2O cluster using the given `client` and `deployment_specification`.
-/// If there is any error during the deployment of any component (stateful set, service, etc.),
-/// the deployment is rolled back - components already deployed are undeployed.
-pub fn deploy_h2o_cluster(client: &Client, deployment_specification: DeploymentSpecification) -> Result<Deployment, Error> {
-    let mut tokio_runtime: Runtime = tokio::runtime::Runtime::new().unwrap();
+pub async fn deploy_h2o_cluster(client: Client, deployment_specification: DeploymentSpecification) -> Result<Deployment, Error> {
     let mut deployment: Deployment = Deployment::new(deployment_specification);
 
-    deployment.services.push(deploy_service(&mut tokio_runtime, client, &deployment)?);
-    deployment.stateful_sets.push(deploy_statefulset(&mut tokio_runtime, client, &deployment)?);
+    deployment.services.push(deploy_service(  client.clone(),&deployment).await?);
+    deployment.stateful_sets.push(deploy_statefulset(client.clone(), &deployment).await?);
 
+    // TODO: Rollback when there is an error at this point, not in the inner methods
     return Ok(deployment);
 }
 
-#[inline]
-fn deploy_service(tokio_runtime: &mut Runtime, client: &Client, deployment: &Deployment) -> Result<Service, Error> {
+async fn deploy_service(client: Client, deployment: &Deployment) -> Result<Service, Error> {
     let service_api: Api<Service> = Api::namespaced(client.clone(), &deployment.specification.namespace);
 
     let service: Service = templates::h2o_service(&deployment.specification.name, &deployment.specification.namespace);
-    return match tokio_runtime.block_on(service_api.create(&PostParams::default(), &service)) {
+    return match service_api.create(&PostParams::default(), &service).await {
         Ok(service) => {
             Ok(service)
         }
@@ -106,12 +105,11 @@ fn deploy_service(tokio_runtime: &mut Runtime, client: &Client, deployment: &Dep
     };
 }
 
-#[inline]
-fn deploy_statefulset(tokio_runtime: &mut Runtime, client: &Client, deployment: &Deployment) -> Result<StatefulSet, Error> {
+async fn deploy_statefulset(client: Client, deployment: &Deployment) -> Result<StatefulSet, Error> {
     let statefulset_api: Api<StatefulSet> = Api::namespaced(client.clone(), &deployment.specification.namespace);
     let stateful_set: StatefulSet = templates::h2o_stateful_set(&deployment.specification.name, &deployment.specification.namespace, "h2oai/h2o-open-source-k8s", "latest",
                                                                 deployment.specification.num_h2o_nodes, deployment.specification.memory_percentage, &deployment.specification.memory, deployment.specification.num_cpu);
-    return match tokio_runtime.block_on(statefulset_api.create(&PostParams::default(), &stateful_set)) {
+    return match statefulset_api.create(&PostParams::default(), &stateful_set).await {
         Ok(statefulset) => {
             Result::Ok(statefulset)
         }
@@ -199,7 +197,7 @@ pub fn deploy_ingress(client: &Client, deployment: &mut Deployment) -> Result<()
 mod tests {
     extern crate tests_common;
 
-    use std::path::{PathBuf};
+    use std::path::PathBuf;
 
     use super::{Deployment, DeploymentSpecification};
     use super::kube::Client;
