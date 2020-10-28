@@ -1,3 +1,6 @@
+extern crate tests_common;
+use std::path::PathBuf;
+
 use assert_cmd::assert::Assert;
 use assert_cmd::Command;
 
@@ -53,8 +56,10 @@ Undeploys an existing H2O cluster from Kubernetes.*"#;
 
 #[test]
 fn test_deploy_undeploy() {
+    let kubeconfig_location: PathBuf = tests_common::kubeconfig_location_panic();
+    let kubeconfig_location_str: &str = kubeconfig_location.to_str().unwrap();
     let mut deploy_cmd = Command::cargo_bin("h2ok").unwrap();
-    let assert_deploy: Assert = deploy_cmd.args(&["deploy", "--cluster_size", "1", "--kubeconfig", env!("KUBECONFIG")])
+    let assert_deploy: Assert = deploy_cmd.args(&["deploy", "--cluster_size", "1", "--kubeconfig", kubeconfig_location_str])
         .assert();
 
     let output: Vec<u8> = assert_deploy.success()
@@ -83,8 +88,10 @@ fn test_deploy_undeploy() {
 /// Output of `deploy` command (if successful) is filename of the deployment descriptor persisted.
 #[test]
 fn test_undeploy_piping() {
+    let kubeconfig_location: PathBuf = tests_common::kubeconfig_location_panic();
+    let kubeconfig_location_str: &str = kubeconfig_location.to_str().unwrap();
     let mut deploy_cmd = Command::cargo_bin("h2ok").unwrap();
-    let assert_deploy: Assert = deploy_cmd.args(&["deploy", "--cluster_size", "1", "--kubeconfig", env!("KUBECONFIG")])
+    let assert_deploy: Assert = deploy_cmd.args(&["deploy", "--cluster_size", "1", "--kubeconfig", kubeconfig_location_str])
         .assert();
 
     let output = assert_deploy.success()

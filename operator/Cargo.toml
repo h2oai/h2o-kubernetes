@@ -1,5 +1,5 @@
 [package]
-name = "operator"
+name = "h2o-operator"
 version = "0.1.0"
 authors = ["Pavel Pscheidl <pavel@h2o.ai>"]
 edition = "2018"
@@ -17,3 +17,7 @@ tokio = { version = "0.2.22", features = ["macros", "rt-core"] }
 log = "0.4.11"
 simple_logger = "1.11.0"
 deployment = {path = "../deployment"}
+
+[dev-dependencies]
+assert_cmd = "1.0.1"
+tests_common = {path = "../tests_common" }

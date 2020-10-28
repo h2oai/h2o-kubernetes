@@ -289,6 +289,7 @@ dependencies = [
  "kube",
  "kube-derive",
  "kube-runtime",
+ "log",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -577,6 +578,26 @@ dependencies = [
  "slab",
  "tokio",
  "tokio-util",
+]
+
+[[package]]
+name = "h2o-operator"
+version = "0.1.0"
+dependencies = [
+ "assert_cmd",
+ "deployment",
+ "futures",
+ "k8s-openapi",
+ "kube",
+ "kube-derive",
+ "kube-runtime",
+ "log",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "simple_logger",
+ "tests_common",
+ "tokio",
 ]
 
 [[package]]
@@ -1110,24 +1131,6 @@ dependencies = [
  "libc",
  "pkg-config",
  "vcpkg",
-]
-
-[[package]]
-name = "operator"
-version = "0.1.0"
-dependencies = [
- "deployment",
- "futures",
- "k8s-openapi",
- "kube",
- "kube-derive",
- "kube-runtime",
- "log",
- "serde",
- "serde_json",
- "serde_yaml",
- "simple_logger",
- "tokio",
 ]
 
 [[package]]

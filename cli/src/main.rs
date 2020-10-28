@@ -1,5 +1,6 @@
 extern crate clap;
 extern crate deployment;
+extern crate tokio;
 
 
 use std::fs::File;
@@ -14,7 +15,8 @@ use deployment::{Deployment, DeploymentSpecification};
 
 mod cli;
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let command: Command = match cli::get_command() {
         Ok(cmd) => { cmd }
         Err(error) => {
@@ -24,7 +26,7 @@ fn main() {
     };
     match command {
         Command::Deployment(deployment) => {
-            deploy(deployment);
+            deploy(deployment).await;
         }
         Command::Undeploy(deployment_path) => {
             undeploy(deployment_path.as_path())
@@ -35,7 +37,7 @@ fn main() {
     };
 }
 
-fn deploy(user_deployment_spec: UserDeploymentSpecification) {
+async fn deploy(user_deployment_spec: UserDeploymentSpecification) {
     let (client, namespace): (Client, String) = if let Some(kubeconfig) = &user_deployment_spec.kubeconfig_path {
         deployment::from_kubeconfig(kubeconfig.as_path())
     } else {
@@ -49,13 +51,12 @@ fn deploy(user_deployment_spec: UserDeploymentSpecification) {
 
     let deployment_spec: DeploymentSpecification = DeploymentSpecification::new(user_deployment_spec.name, namespace, user_deployment_spec.memory_percentage, user_deployment_spec.memory, user_deployment_spec.num_cpu, user_deployment_spec.num_h2o_nodes,
                                                                                 user_deployment_spec.kubeconfig_path);
-
-    let deployment: Deployment = match deployment::deploy_h2o_cluster(&client, deployment_spec) {
-        Ok(successful_deployment) => { successful_deployment }
-        Err(error) => {
-            panic!("Unable to deploy H2O cluster. Error:\n{}", error);
-        }
-    };
+        let deployment: Deployment = match deployment::deploy_h2o_cluster(client.clone(), deployment_spec).await {
+            Ok(successful_deployment) => { successful_deployment }
+            Err(error) => {
+                panic!("Unable to deploy H2O cluster. Error:\n{}", error);
+            }
+        };
     let persisted_filename = persist_deployment(&deployment, false).unwrap();
 
     if running_on_terminal() {

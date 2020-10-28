@@ -1,5 +1,6 @@
 extern crate futures;
 extern crate kube;
+extern crate log;
 
 use std::path::{Path, PathBuf};
 
@@ -12,12 +13,14 @@ use kube::{Api, Config, Error};
 use kube::api::{DeleteParams, ListParams, Meta, PostParams, WatchEvent};
 use kube::Client;
 use kube::config::{Kubeconfig, KubeConfigOptions};
+use log::error;
 use serde::{Deserialize, Serialize};
 use tokio::runtime::Runtime;
 
-mod templates;
 pub mod crd;
 pub mod ingress;
+pub mod service;
+pub mod statefulset;
 
 
 pub fn from_kubeconfig(kubeconfig_path: &Path) -> (Client, String) {
@@ -82,8 +85,15 @@ impl DeploymentSpecification {
 pub async fn deploy_h2o_cluster(client: Client, deployment_specification: DeploymentSpecification) -> Result<Deployment, Error> {
     let mut deployment: Deployment = Deployment::new(deployment_specification);
 
-    deployment.services.push(deploy_service(  client.clone(),&deployment).await?);
-    deployment.stateful_sets.push(deploy_statefulset(client.clone(), &deployment).await?);
+    let service_future = deploy_service(client.clone(), &deployment);
+    let statefulset_future = deploy_statefulset(client.clone(), &deployment);
+
+    let (service, future) = tokio::join!(service_future, statefulset_future);
+
+
+    deployment.services.push(service?);
+    deployment.stateful_sets.push(future?);
+
 
     // TODO: Rollback when there is an error at this point, not in the inner methods
     return Ok(deployment);
@@ -91,14 +101,13 @@ pub async fn deploy_h2o_cluster(client: Client, deployment_specification: Deploy
 
 async fn deploy_service(client: Client, deployment: &Deployment) -> Result<Service, Error> {
     let service_api: Api<Service> = Api::namespaced(client.clone(), &deployment.specification.namespace);
-
-    let service: Service = templates::h2o_service(&deployment.specification.name, &deployment.specification.namespace);
+    let service: Service = service::h2o_service(&deployment.specification.name, &deployment.specification.namespace);
     return match service_api.create(&PostParams::default(), &service).await {
         Ok(service) => {
             Ok(service)
         }
         Err(e) => {
-            eprintln!("Unable to deploy service for '{}' deployment. Rewinding existing deployment. Reason:\n{:?}", &deployment.specification.name, e);
+            error!("Unable to deploy service for '{}' deployment. Rewinding existing deployment. Reason:\n{:?}", &deployment.specification.name, e);
             undeploy_h2o(&client, &deployment).unwrap();
             Err(e)
         }
@@ -107,14 +116,14 @@ async fn deploy_service(client: Client, deployment: &Deployment) -> Result<Servi
 
 async fn deploy_statefulset(client: Client, deployment: &Deployment) -> Result<StatefulSet, Error> {
     let statefulset_api: Api<StatefulSet> = Api::namespaced(client.clone(), &deployment.specification.namespace);
-    let stateful_set: StatefulSet = templates::h2o_stateful_set(&deployment.specification.name, &deployment.specification.namespace, "h2oai/h2o-open-source-k8s", "latest",
-                                                                deployment.specification.num_h2o_nodes, deployment.specification.memory_percentage, &deployment.specification.memory, deployment.specification.num_cpu);
+    let stateful_set: StatefulSet = statefulset::h2o_stateful_set(&deployment.specification.name, &deployment.specification.namespace, "h2oai/h2o-open-source-k8s", "latest",
+                                                                  deployment.specification.num_h2o_nodes, deployment.specification.memory_percentage, &deployment.specification.memory, deployment.specification.num_cpu);
     return match statefulset_api.create(&PostParams::default(), &stateful_set).await {
         Ok(statefulset) => {
             Result::Ok(statefulset)
         }
         Err(e) => {
-            eprintln!("Unable to statefulset for '{}' deployment. Rewinding existing deployment. Reason:\n{:?}", &deployment.specification.name, e);
+            error!("Unable to statefulset for '{}' deployment. Rewinding existing deployment. Reason:\n{:?}", &deployment.specification.name, e);
             undeploy_h2o(&client, &deployment).unwrap();
             Result::Err(e)
         }
@@ -162,7 +171,7 @@ pub fn deploy_ingress(client: &Client, deployment: &mut Deployment) -> Result<()
     let mut tokio_runtime: Runtime = tokio::runtime::Runtime::new().unwrap();
 
     let api: Api<Ingress> = Api::namespaced(client.clone(), &deployment.specification.namespace);
-    let ingress_template: Ingress = templates::h2o_ingress(&deployment.specification.name, &deployment.specification.namespace);
+    let ingress_template: Ingress = ingress::h2o_ingress(&deployment.specification.name, &deployment.specification.namespace);
 
     return match tokio_runtime.block_on(api.create(&PostParams::default(), &ingress_template)) {
         Ok(ingress) => {
@@ -210,12 +219,13 @@ mod tests {
         super::from_kubeconfig(kubeconfig_location.as_path());
     }
 
-    #[test]
-    fn test_deploy_h2o() {
+    #[tokio::test]
+    async fn test_deploy_h2o() {
         let (client, namespace): (Client, String) = super::try_default().unwrap();
         let deployment_specification: DeploymentSpecification = DeploymentSpecification::new("h2o-k8s-test-cluster".to_string(), namespace,
                                                                                              80, "256Mi".to_string(), 2, 2, None);
-        let mut deployment: Deployment = super::deploy_h2o_cluster(&client, deployment_specification).unwrap();
+
+        let mut deployment: Deployment = super::deploy_h2o_cluster(client.clone(), deployment_specification).await.unwrap();
         assert_eq!(1, deployment.services.len());
         assert_eq!(1, deployment.stateful_sets.len());
         assert_eq!(0, deployment.ingresses.len());

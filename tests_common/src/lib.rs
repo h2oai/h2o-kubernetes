@@ -1,8 +1,8 @@
-// Module with common test resouces
+// Module with common test resources
 use std::env;
 use std::path::PathBuf;
 
-pub const TEST_KUBECONFIG_ENVVAR: &str = "KUBECONFIG";
+const TEST_KUBECONFIG_ENVVAR: &str = "KUBECONFIG";
 
 /// Returns a String with path to kubeconfig, if the environment variable TEST_KUBECONFIG_ENVVAR is set.
 /// If the variable is not set, the method panics, as it is assumed the env var is required for the test to be

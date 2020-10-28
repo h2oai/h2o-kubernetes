@@ -327,7 +327,7 @@ mod tests {
     }
 
     #[test]
-    fn Dopvalidate_number_range() {
+    fn validate_number_range() {
         assert!(super::validate_percentage("10".to_string()).is_ok());
         assert!(super::validate_percentage("101".to_string()).is_err());
     }
