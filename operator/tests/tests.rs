@@ -4,8 +4,7 @@ extern crate tests_common;
 use std::process::{Child, Command};
 
 use kube::{Api, Client};
-use kube::api::{PostParams, DeleteParams};
-use log::info;
+use kube::api::{DeleteParams, PostParams};
 use tokio::time::Duration;
 
 use deployment::crd::{H2O, H2OSpec, Resources};
@@ -29,7 +28,10 @@ async fn test_deploy() {
     let h2o: H2O = H2O::new("test", h2o_spec);
     let deployed_h2o: H2O = api.create(&PostParams::default(), &h2o).await.unwrap();
 
-    api.delete("test", &DeleteParams::default()).await;
+    std::thread::sleep(Duration::from_secs(10));
 
+    api.delete("test", &DeleteParams::default()).await.unwrap();
+
+    std::thread::sleep(Duration::from_secs(100));
     h2o_operator_process.kill().unwrap();
 }

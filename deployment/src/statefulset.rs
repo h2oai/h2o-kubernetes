@@ -1,10 +1,16 @@
+use futures::future::Either;
 use k8s_openapi::api::apps::v1::StatefulSet;
+use kube::{Api, Client, Error};
+use kube::api::{DeleteParams, PostParams};
+use kube::client::Status;
+
+use crate::Deployment;
 
 const STATEFUL_SET_TEMPLATE: &str = r#"
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: <name>-stateful-set
+  name: <name>
   namespace: <namespace>
 spec:
   serviceName: h2o-service
@@ -63,4 +69,17 @@ pub fn h2o_stateful_set(name: &str, namespace: &str, docker_img_name: &str, dock
 
     let stateful_set: StatefulSet = serde_yaml::from_str(&stateful_set_definition).unwrap();
     return stateful_set;
+}
+
+pub async fn create(client: Client, deployment: &Deployment) -> Result<StatefulSet, Error> {
+    let statefulset_api: Api<StatefulSet> = Api::namespaced(client.clone(), &deployment.specification.namespace);
+    let stateful_set: StatefulSet = h2o_stateful_set(&deployment.specification.name, &deployment.specification.namespace, "h2oai/h2o-open-source-k8s", "latest",
+                                                     deployment.specification.num_h2o_nodes, deployment.specification.memory_percentage, &deployment.specification.memory, deployment.specification.num_cpu);
+
+    return statefulset_api.create(&PostParams::default(), &stateful_set).await;
+}
+
+pub async fn delete(client: Client, name: &str, namespace: &str) {
+    let statefulset_api: Api<StatefulSet> = Api::namespaced(client.clone(), namespace);
+    statefulset_api.delete(name, &DeleteParams::default()).await.unwrap();
 }

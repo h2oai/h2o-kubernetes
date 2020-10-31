@@ -4,16 +4,15 @@ extern crate log;
 
 use std::path::{Path, PathBuf};
 
-use futures::{StreamExt, TryStreamExt};
 use futures::executor::block_on;
+use futures::TryStreamExt;
 use k8s_openapi::api::apps::v1::StatefulSet;
 use k8s_openapi::api::core::v1::Service;
 use k8s_openapi::api::networking::v1beta1::Ingress;
 use kube::{Api, Config, Error};
-use kube::api::{DeleteParams, ListParams, Meta, PostParams, WatchEvent};
+use kube::api::{DeleteParams, Meta, PostParams, WatchEvent};
 use kube::Client;
 use kube::config::{Kubeconfig, KubeConfigOptions};
-use log::error;
 use serde::{Deserialize, Serialize};
 use tokio::runtime::Runtime;
 
@@ -21,6 +20,7 @@ pub mod crd;
 pub mod ingress;
 pub mod service;
 pub mod statefulset;
+pub mod finalizer;
 
 
 pub fn from_kubeconfig(kubeconfig_path: &Path) -> (Client, String) {
@@ -85,49 +85,16 @@ impl DeploymentSpecification {
 pub async fn deploy_h2o_cluster(client: Client, deployment_specification: DeploymentSpecification) -> Result<Deployment, Error> {
     let mut deployment: Deployment = Deployment::new(deployment_specification);
 
-    let service_future = deploy_service(client.clone(), &deployment);
-    let statefulset_future = deploy_statefulset(client.clone(), &deployment);
+    let service_future = service::create(client.clone(), &deployment);
+    let statefulset_future = statefulset::create(client.clone(), &deployment);
 
     let (service, future) = tokio::join!(service_future, statefulset_future);
-
 
     deployment.services.push(service?);
     deployment.stateful_sets.push(future?);
 
-
     // TODO: Rollback when there is an error at this point, not in the inner methods
     return Ok(deployment);
-}
-
-async fn deploy_service(client: Client, deployment: &Deployment) -> Result<Service, Error> {
-    let service_api: Api<Service> = Api::namespaced(client.clone(), &deployment.specification.namespace);
-    let service: Service = service::h2o_service(&deployment.specification.name, &deployment.specification.namespace);
-    return match service_api.create(&PostParams::default(), &service).await {
-        Ok(service) => {
-            Ok(service)
-        }
-        Err(e) => {
-            error!("Unable to deploy service for '{}' deployment. Rewinding existing deployment. Reason:\n{:?}", &deployment.specification.name, e);
-            undeploy_h2o(&client, &deployment).unwrap();
-            Err(e)
-        }
-    };
-}
-
-async fn deploy_statefulset(client: Client, deployment: &Deployment) -> Result<StatefulSet, Error> {
-    let statefulset_api: Api<StatefulSet> = Api::namespaced(client.clone(), &deployment.specification.namespace);
-    let stateful_set: StatefulSet = statefulset::h2o_stateful_set(&deployment.specification.name, &deployment.specification.namespace, "h2oai/h2o-open-source-k8s", "latest",
-                                                                  deployment.specification.num_h2o_nodes, deployment.specification.memory_percentage, &deployment.specification.memory, deployment.specification.num_cpu);
-    return match statefulset_api.create(&PostParams::default(), &stateful_set).await {
-        Ok(statefulset) => {
-            Result::Ok(statefulset)
-        }
-        Err(e) => {
-            error!("Unable to statefulset for '{}' deployment. Rewinding existing deployment. Reason:\n{:?}", &deployment.specification.name, e);
-            undeploy_h2o(&client, &deployment).unwrap();
-            Result::Err(e)
-        }
-    };
 }
 
 pub fn undeploy_h2o(client: &Client, deployment: &Deployment) -> Result<(), Vec<String>> {
@@ -167,41 +134,6 @@ pub fn undeploy_h2o(client: &Client, deployment: &Deployment) -> Result<(), Vec<
     };
 }
 
-pub fn deploy_ingress(client: &Client, deployment: &mut Deployment) -> Result<(), Error> {
-    let mut tokio_runtime: Runtime = tokio::runtime::Runtime::new().unwrap();
-
-    let api: Api<Ingress> = Api::namespaced(client.clone(), &deployment.specification.namespace);
-    let ingress_template: Ingress = ingress::h2o_ingress(&deployment.specification.name, &deployment.specification.namespace);
-
-    return match tokio_runtime.block_on(api.create(&PostParams::default(), &ingress_template)) {
-        Ok(ingress) => {
-            let ingress_name: String = ingress.meta().name.as_ref().unwrap().clone();
-            let mut created_ingress: Ingress = ingress;
-            let lp: ListParams = ListParams::default()
-                .fields(&format!("metadata.name={}", &ingress_name))
-                .timeout(3);
-            let mut event_stream = tokio_runtime.block_on(api.watch(&lp, "0")).unwrap().boxed();
-
-            while let Some(status) = tokio_runtime.block_on(event_stream.try_next()).unwrap() {
-                match status {
-                    WatchEvent::Modified(up_to_date_ingress) => {
-                        created_ingress = up_to_date_ingress;
-                        if ingress::any_ip(&created_ingress).is_some() {
-                            break;
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            deployment.ingresses.push(created_ingress);
-            return Ok(());
-        }
-        Err(err) => {
-            Err(err)
-        }
-    };
-}
-
 #[cfg(test)]
 mod tests {
     extern crate tests_common;
@@ -231,7 +163,7 @@ mod tests {
         assert_eq!(0, deployment.ingresses.len());
 
         // Deploy ingress on top of existing deployment
-        match super::deploy_ingress(&client, &mut deployment) {
+        match super::ingress::create(&client, &mut deployment).await {
             Ok(_) => {
                 assert_eq!(1, deployment.ingresses.len());
             }

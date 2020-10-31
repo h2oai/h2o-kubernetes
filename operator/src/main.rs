@@ -20,6 +20,7 @@ async fn main() -> Result<(), Error> {
     info!("Kubernetes client obtained. Using default namespace: {}", &namespace);
     deploy_crd(client.clone()).await;
     controller::run(client.clone(), &namespace).await;
+
     Ok(())
 }
 
