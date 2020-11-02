@@ -1,8 +1,6 @@
-use futures::future::Either;
 use k8s_openapi::api::apps::v1::StatefulSet;
 use kube::{Api, Client, Error};
-use kube::api::{DeleteParams, PostParams};
-use kube::client::Status;
+use kube::api::{DeleteParams, PostParams, PropagationPolicy};
 
 use crate::Deployment;
 
@@ -13,7 +11,7 @@ metadata:
   name: <name>
   namespace: <namespace>
 spec:
-  serviceName: h2o-service
+  serviceName: <name>
   podManagementPolicy: "Parallel"
   replicas: <nodes>
   selector:
@@ -47,7 +45,7 @@ spec:
               memory: <memory>
           env:
           - name: H2O_KUBERNETES_SERVICE_DNS
-            value: <name>-service.<namespace>.svc.cluster.local
+            value: <name>.<namespace>.svc.cluster.local
           - name: H2O_NODE_LOOKUP_TIMEOUT
             value: '180'
           - name: H2O_NODE_EXPECTED_COUNT
@@ -81,5 +79,11 @@ pub async fn create(client: Client, deployment: &Deployment) -> Result<StatefulS
 
 pub async fn delete(client: Client, name: &str, namespace: &str) {
     let statefulset_api: Api<StatefulSet> = Api::namespaced(client.clone(), namespace);
-    statefulset_api.delete(name, &DeleteParams::default()).await.unwrap();
+    let delete_params: DeleteParams = DeleteParams {
+        dry_run: false,
+        grace_period_seconds: None,
+        propagation_policy: Some(PropagationPolicy::Foreground),
+        preconditions: None,
+    };
+    statefulset_api.delete(name, &delete_params).await.unwrap();
 }

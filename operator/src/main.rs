@@ -16,8 +16,8 @@ mod controller;
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     init();
-    let (client, namespace): (Client, String) = deployment::try_default().unwrap();
-    info!("Kubernetes client obtained. Using default namespace: {}", &namespace);
+    let (client, namespace): (Client, String) = deployment::try_default().await?;
+    info!("Kubeconfig found. Using default namespace: {}", &namespace);
     deploy_crd(client.clone()).await;
     controller::run(client.clone(), &namespace).await;
 

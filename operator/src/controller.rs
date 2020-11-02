@@ -2,12 +2,12 @@ use std::time::Duration;
 
 use futures::StreamExt;
 use kube::{Api, Client, Error};
-use kube::api::{ListParams, Meta, DeleteParams};
+use kube::api::{ListParams, Meta};
 use kube_runtime::Controller;
 use kube_runtime::controller::{Context, ReconcilerAction};
 use log::info;
 
-use deployment::{Deployment, DeploymentSpecification};
+use deployment::{DeploymentSpecification};
 use deployment::crd::H2O;
 
 pub async fn run(client: Client, deployment_namespace: &str) {
@@ -37,7 +37,7 @@ impl Data {
 enum ControllerAction {
     Create,
     Delete,
-    Noop, // Updating existing H2O deployment is not supported - once H2O is clustered, it is immutable
+    Noop, // Updating existing H2O deployment is not supported - once H2O is clustered, it is immutable. Category for any changes requiring on actions.
 }
 
 async fn reconcile(h2o: H2O, context: Context<Data>) -> Result<ReconcilerAction, Error> {
@@ -116,7 +116,6 @@ async fn delete_h2o_deployment(h2o: &H2O, context: &Context<Data>) -> Result<Rec
     let service_future = deployment::service::delete(data.client.clone(), name, namespace);
 
     tokio::join!(statefulset_future, service_future); // todo: handle the errors
-
     deployment::finalizer::remove_finalizer(data.client.clone(), name, namespace).await?;
 
     return Ok(ReconcilerAction {

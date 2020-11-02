@@ -2,7 +2,6 @@ extern crate clap;
 extern crate deployment;
 extern crate tokio;
 
-
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
@@ -29,19 +28,19 @@ async fn main() {
             deploy(deployment).await;
         }
         Command::Undeploy(deployment_path) => {
-            undeploy(deployment_path.as_path())
+            undeploy(deployment_path.as_path()).await;
         }
         Command::Ingress(deployment_path) => {
-            ingress(&deployment_path);
+            ingress(&deployment_path).await;
         }
     };
 }
 
 async fn deploy(user_deployment_spec: UserDeploymentSpecification) {
     let (client, namespace): (Client, String) = if let Some(kubeconfig) = &user_deployment_spec.kubeconfig_path {
-        deployment::from_kubeconfig(kubeconfig.as_path())
+        deployment::from_kubeconfig(kubeconfig.as_path()).await
     } else {
-        match deployment::try_default() {
+        match deployment::try_default().await {
             Ok(client_namespace) => {
                 client_namespace
             }
@@ -51,12 +50,12 @@ async fn deploy(user_deployment_spec: UserDeploymentSpecification) {
 
     let deployment_spec: DeploymentSpecification = DeploymentSpecification::new(user_deployment_spec.name, namespace, user_deployment_spec.memory_percentage, user_deployment_spec.memory, user_deployment_spec.num_cpu, user_deployment_spec.num_h2o_nodes,
                                                                                 user_deployment_spec.kubeconfig_path);
-        let deployment: Deployment = match deployment::deploy_h2o_cluster(client.clone(), deployment_spec).await {
-            Ok(successful_deployment) => { successful_deployment }
-            Err(error) => {
-                panic!("Unable to deploy H2O cluster. Error:\n{}", error);
-            }
-        };
+    let deployment: Deployment = match deployment::deploy_h2o_cluster(client.clone(), deployment_spec).await {
+        Ok(successful_deployment) => { successful_deployment }
+        Err(error) => {
+            panic!("Unable to deploy H2O cluster. Error:\n{}", error);
+        }
+    };
     let persisted_filename = persist_deployment(&deployment, false).unwrap();
 
     if running_on_terminal() {
@@ -100,9 +99,9 @@ fn persist_deployment(deployment: &Deployment, overwrite: bool) -> Result<String
     return Ok(String::from(path.to_str().unwrap()));
 }
 
-fn undeploy(deployment_descriptor: &Path) {
-    let (deployment, client): (Deployment, Client) = extract_existing_deployment(deployment_descriptor);
-    match deployment::undeploy_h2o(&client, &deployment) {
+async fn undeploy(deployment_descriptor: &Path) {
+    let (deployment, client): (Deployment, Client) = extract_existing_deployment(deployment_descriptor).await;
+    match deployment::undeploy_h2o(&client, &deployment).await {
         Ok(_) => {}
         Err(deployment_errs) => {
             for undeployed in deployment_errs.iter() {
@@ -114,10 +113,10 @@ fn undeploy(deployment_descriptor: &Path) {
     std::fs::remove_file(deployment_descriptor).unwrap();
 }
 
-fn ingress(deployment_descriptor: &Path) {
-    let (mut deployment, client): (Deployment, Client) = extract_existing_deployment(deployment_descriptor);
+async fn ingress(deployment_descriptor: &Path) {
+    let (mut deployment, client): (Deployment, Client) = extract_existing_deployment(deployment_descriptor).await;
 
-    match deployment::deploy_ingress(&client, &mut deployment) {
+    match deployment::ingress::create(&client, &mut deployment).await {
         Ok(_) => {
             let deployment_file_name: String = persist_deployment(&deployment, true).unwrap();
             if running_on_terminal() {
@@ -145,7 +144,7 @@ fn ingress(deployment_descriptor: &Path) {
 /// If there is no Client described in the `deployment_descriptor`, it is assumed the one from the
 /// environment as defined by `KUBECONFIG` environment variable or some well-known places should be used,
 /// as such a kubeconfig was used to create the original deployment described in the file.
-fn extract_existing_deployment(deployment_descriptor: &Path) -> (Deployment, Client) {
+async fn extract_existing_deployment(deployment_descriptor: &Path) -> (Deployment, Client) {
     let deployment_file = File::open(deployment_descriptor).unwrap();
     let deployment: Deployment = serde_json::from_reader(deployment_file).unwrap();
 
@@ -153,10 +152,10 @@ fn extract_existing_deployment(deployment_descriptor: &Path) -> (Deployment, Cli
     let (client, _): (Client, String) = match &deployment.specification.kubeconfig_path {
         None => {
             // No kubeconfig specified means the one from the environment should be used.
-            deployment::try_default().unwrap()
+            deployment::try_default().await.unwrap()
         }
         Some(kubeconfig_path) => {
-            deployment::from_kubeconfig(kubeconfig_path)
+            deployment::from_kubeconfig(kubeconfig_path).await
         }
     };
 

@@ -4,17 +4,14 @@ extern crate log;
 
 use std::path::{Path, PathBuf};
 
-use futures::executor::block_on;
-use futures::TryStreamExt;
 use k8s_openapi::api::apps::v1::StatefulSet;
 use k8s_openapi::api::core::v1::Service;
 use k8s_openapi::api::networking::v1beta1::Ingress;
 use kube::{Api, Config, Error};
-use kube::api::{DeleteParams, Meta, PostParams, WatchEvent};
 use kube::Client;
 use kube::config::{Kubeconfig, KubeConfigOptions};
 use serde::{Deserialize, Serialize};
-use tokio::runtime::Runtime;
+use kube::api::{Meta, DeleteParams};
 
 pub mod crd;
 pub mod ingress;
@@ -23,16 +20,16 @@ pub mod statefulset;
 pub mod finalizer;
 
 
-pub fn from_kubeconfig(kubeconfig_path: &Path) -> (Client, String) {
+pub async fn from_kubeconfig(kubeconfig_path: &Path) -> (Client, String) {
     let kubeconfig: Kubeconfig = Kubeconfig::read_from(kubeconfig_path).unwrap();
-    let config: Config = block_on(Config::from_custom_kubeconfig(kubeconfig, &KubeConfigOptions::default())).unwrap();
+    let config: Config = Config::from_custom_kubeconfig(kubeconfig, &KubeConfigOptions::default()).await.unwrap();
     let kubeconfig_namespace: String = config.default_ns.clone();
     let client: Client = Client::new(config);
     return (client, kubeconfig_namespace);
 }
 
-pub fn try_default() -> Result<(Client, String), Error> {
-    let config = block_on(Config::infer())?;
+pub async fn try_default() -> Result<(Client, String), Error> {
+    let config = Config::infer().await?;
     let kubeconfig_namespace: String = config.default_ns.clone();
     let client = Client::new(config);
     return Result::Ok((client, kubeconfig_namespace));
@@ -97,14 +94,13 @@ pub async fn deploy_h2o_cluster(client: Client, deployment_specification: Deploy
     return Ok(deployment);
 }
 
-pub fn undeploy_h2o(client: &Client, deployment: &Deployment) -> Result<(), Vec<String>> {
-    let mut tokio_runtime: Runtime = tokio::runtime::Runtime::new().unwrap();
+pub async fn undeploy_h2o(client: &Client, deployment: &Deployment) -> Result<(), Vec<String>> {
     let namespace: &str = deployment.specification.namespace.as_str();
     let mut not_deleted: Vec<String> = vec!();
 
     let api: Api<Ingress> = Api::namespaced(client.clone(), namespace);
     for ingress in deployment.ingresses.iter() {
-        match tokio_runtime.block_on(api.delete(ingress.name().as_str(), &DeleteParams::default())) {
+        match api.delete(ingress.name().as_str(), &DeleteParams::default()).await {
             Ok(_) => {}
             Err(e) => { not_deleted.push(format!("Unable to undeploy '{}'. Reason:\n{:?}", ingress.name(), e)) }
         }
@@ -112,16 +108,15 @@ pub fn undeploy_h2o(client: &Client, deployment: &Deployment) -> Result<(), Vec<
 
     let api: Api<Service> = Api::namespaced(client.clone(), namespace);
     for service in deployment.services.iter() {
-        match tokio_runtime.block_on(api.delete(service.name().as_str(), &DeleteParams::default())) {
+        match api.delete(service.name().as_str(), &DeleteParams::default()).await {
             Ok(_) => {}
             Err(_) => { not_deleted.push(service.name()) }
         }
     }
 
     let api: Api<StatefulSet> = Api::namespaced(client.clone(), namespace);
-
     for stateful_set in deployment.stateful_sets.iter() {
-        match tokio_runtime.block_on(api.delete(stateful_set.name().as_str(), &DeleteParams::default())) {
+        match api.delete(stateful_set.name().as_str(), &DeleteParams::default()).await {
             Ok(_) => {}
             Err(_) => { not_deleted.push(stateful_set.name()) }
         }
@@ -171,7 +166,7 @@ mod tests {
                 panic!("Test of ingress deployment failed. Reason: \n{}", e);
             }
         }
-        let undeployment_result = super::undeploy_h2o(&client, &deployment);
+        let undeployment_result = super::undeploy_h2o(&client, &deployment).await;
         assert!(undeployment_result.is_ok());
     }
 }

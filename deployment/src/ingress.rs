@@ -1,7 +1,7 @@
 use kube::{Client, Api, Error};
 use crate::Deployment;
-use kube::api::{ListParams, PostParams, DeleteParams};
-use k8s_openapi::api::extensions::v1beta1::Ingress;
+use kube::api::{PostParams, DeleteParams};
+use k8s_openapi::api::networking::v1beta1::Ingress;
 
 
 const INGRESS_TEMPLATE: &str = r#"
