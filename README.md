@@ -1,4 +1,4 @@
-# H2O Kubernetes CLI
+# H2O Kubernetes
 
 ![Rust](https://github.com/h2oai/h2o-kubernetes/workflows/Rust/badge.svg)
 
