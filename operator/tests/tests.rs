@@ -31,7 +31,7 @@ async fn test_deploy() {
     // Create H2O in Kubernetes cluster
     let resources: Resources = Resources::new(1, "256Mi".to_string(), Option::None);
     deployment::crd::wait_ready(client.clone(), Duration::from_secs(180)).await.expect("CRD not available within timeout.");
-    let h2o_spec: H2OSpec = H2OSpec::new(node_count as u32, resources);
+    let h2o_spec: H2OSpec = H2OSpec::new(node_count as u32, Option::Some("latest".to_string()), resources, Option::None);
     let h2o: H2O = H2O::new(h2o_name, h2o_spec);
     h2o_api.create(&PostParams::default(), &h2o).await.unwrap();
 
@@ -92,7 +92,7 @@ async fn wait_pods_created(client: Client, name: &str, namespace: &str, expected
 async fn wait_pods_deleted(client: Client, name: &str, namespace: &str) -> kube::Result<(), Error> {
     let pod_api: Api<Pod> = Api::namespaced(client.clone(), namespace);
     let pod_list_params: ListParams = ListParams {
-        label_selector: Some(name.to_owned()),
+        label_selector: Some(format!("app={}", name)),
         field_selector: None,
         timeout: Some(120),
         allow_bookmarks: false,

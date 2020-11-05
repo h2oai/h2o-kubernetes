@@ -7,7 +7,6 @@ use kube_runtime::Controller;
 use kube_runtime::controller::{Context, ReconcilerAction};
 use log::info;
 
-use deployment::{DeploymentSpecification};
 use deployment::crd::H2O;
 
 pub async fn run(client: Client, deployment_namespace: &str) {
@@ -75,7 +74,6 @@ fn scan_h2o_for_actions(h2o: &H2O) -> ControllerAction {
         ControllerAction::Noop
     };
 }
-
 fn has_h2o3_finalizer(h2o: &H2O) -> bool {
     return match h2o.metadata.finalizers.as_ref() {
         Some(finalizers) => {
@@ -91,18 +89,14 @@ fn has_deletion_stamp(h2o: &H2O) -> bool {
 
 async fn create_h2o_deployment(h2o: &H2O, context: &Context<Data>) -> Result<ReconcilerAction, Error> {
     let data: &Data = context.get_ref();
-    let nodes: u32 = h2o.spec.nodes;
     let name: String = h2o.metadata.name.clone().unwrap();
-    let memory_percentage: u8 = h2o.spec.resources.memory_percentage.unwrap_or(50);
-    let memory: String = h2o.spec.resources.memory.clone();
-    let cpu: u32 = h2o.spec.resources.cpu;
 
-    let deployment_spec: DeploymentSpecification = DeploymentSpecification::new(name.clone(), data.namespace.clone(), memory_percentage, memory, cpu, nodes, Option::None);
-    let deploy_future = deployment::deploy_h2o_cluster(data.client.clone(), deployment_spec);
-    let add_finalizer_future = deployment::finalizer::add_finalizer(data.client.clone(), &name, &data.namespace);
+    let deploy_future = deployment::deploy_h2o_cluster(data.client.clone(), &h2o.spec, &data.namespace, &name);
+    let add_finalizer_future = deployment::finalizer::add_finalizer(data.client.clone(), &data.namespace, &name);
 
     tokio::try_join!(deploy_future, add_finalizer_future)?;
 
+    info!("Deployed H2O '{}'.", &name);
     return Ok(ReconcilerAction {
         requeue_after: Option::None
     });
@@ -112,10 +106,11 @@ async fn delete_h2o_deployment(h2o: &H2O, context: &Context<Data>) -> Result<Rec
     let data: &Data = context.get_ref();
     let name: &str = h2o.metadata.name.as_ref().unwrap();
     let namespace: &str = h2o.meta().namespace.as_ref().unwrap();
-    let statefulset_future = deployment::statefulset::delete(data.client.clone(), name, namespace);
-    let service_future = deployment::service::delete(data.client.clone(), name, namespace);
 
-    tokio::join!(statefulset_future, service_future); // todo: handle the errors
+    let statefulset_future = deployment::statefulset::delete(data.client.clone(), namespace, name);
+    let service_future = deployment::service::delete(data.client.clone(), namespace, name);
+
+    tokio::try_join!(statefulset_future, service_future)?;
     deployment::finalizer::remove_finalizer(data.client.clone(), name, namespace).await?;
 
     return Ok(ReconcilerAction {

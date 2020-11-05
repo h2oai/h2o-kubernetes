@@ -2,16 +2,12 @@ extern crate futures;
 extern crate kube;
 extern crate log;
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use k8s_openapi::api::apps::v1::StatefulSet;
-use k8s_openapi::api::core::v1::Service;
-use k8s_openapi::api::networking::v1beta1::Ingress;
-use kube::{Api, Config, Error};
+use kube::{Config, Error};
 use kube::Client;
 use kube::config::{Kubeconfig, KubeConfigOptions};
-use serde::{Deserialize, Serialize};
-use kube::api::{Meta, DeleteParams};
+use crate::crd::H2OSpec;
 
 pub mod crd;
 pub mod ingress;
@@ -35,98 +31,19 @@ pub async fn try_default() -> Result<(Client, String), Error> {
     return Result::Ok((client, kubeconfig_namespace));
 }
 
-/// Deployment descriptor - contains deployment specification as defined by the user/called
-/// and list if Kubernetes entities deployed, if any.
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Deployment {
-    pub specification: DeploymentSpecification,
-    pub ingresses: Vec<Ingress>,
-    pub stateful_sets: Vec<StatefulSet>,
-    pub services: Vec<Service>,
-}
-
-impl Deployment {
-    /// Deployment might contain a specification, yet it might not contain any deployed units yet.
-    pub fn new(specification: DeploymentSpecification) -> Self {
-        Deployment { specification, services: vec!(), ingresses: vec!(), stateful_sets: vec!() }
-    }
-}
-
-/// Deployment as specified by the user. Not all values might be explicitly inserted by the user,
-/// some might originate from defaults - it is assumed user willingly chose the defaults.
-#[derive(Serialize, Deserialize, Debug)]
-pub struct DeploymentSpecification {
-    /// Name of the deployment. If not provided by the user, the value is randomly generated.
-    pub name: String,
-    /// Namespace to deploy to.
-    pub namespace: String,
-    /// Memory percentage to allocate by the JVM running H2O inside the docker container.
-    pub memory_percentage: u8,
-    /// Total memory for each H2O node. Effectively a pod memory request and limit.
-    pub memory: String,
-    /// Number of CPUs allocated for each H2O node. Effectively a pod CPU request and limit.
-    pub num_cpu: u32,
-    /// Total count of H2O nodes inside the cluster created.
-    pub num_h2o_nodes: u32,
-    /// Kubeconfig - provided optionally. There are well-known standardized locations to look for Kubeconfig, therefore optional.
-    pub kubeconfig_path: Option<PathBuf>,
-}
-
-impl DeploymentSpecification {
-    pub fn new(name: String, namespace: String, memory_percentage: u8, memory: String, num_cpu: u32, num_h2o_nodes: u32, kubeconfig_path: Option<PathBuf>) -> Self {
-        DeploymentSpecification { name, namespace, memory_percentage, memory, num_cpu, num_h2o_nodes, kubeconfig_path }
-    }
-}
-
 /// Deploys an H2O cluster using the given `client` and `deployment_specification`.
-pub async fn deploy_h2o_cluster(client: Client, deployment_specification: DeploymentSpecification) -> Result<Deployment, Error> {
-    let mut deployment: Deployment = Deployment::new(deployment_specification);
-
-    let service_future = service::create(client.clone(), &deployment);
-    let statefulset_future = statefulset::create(client.clone(), &deployment);
-
-    let (service, future) = tokio::join!(service_future, statefulset_future);
-
-    deployment.services.push(service?);
-    deployment.stateful_sets.push(future?);
-
-    // TODO: Rollback when there is an error at this point, not in the inner methods
-    return Ok(deployment);
+pub async fn deploy_h2o_cluster(client: Client, specification: &H2OSpec, namespace: &str, name: &str) -> Result<(), Error> {
+    let service_future = service::create(client.clone(), namespace, name);
+    let statefulset_future = statefulset::create(client.clone(), specification, namespace, name);
+    tokio::try_join!(service_future, statefulset_future)?;
+    return Ok(());
 }
 
-pub async fn undeploy_h2o(client: &Client, deployment: &Deployment) -> Result<(), Vec<String>> {
-    let namespace: &str = deployment.specification.namespace.as_str();
-    let mut not_deleted: Vec<String> = vec!();
-
-    let api: Api<Ingress> = Api::namespaced(client.clone(), namespace);
-    for ingress in deployment.ingresses.iter() {
-        match api.delete(ingress.name().as_str(), &DeleteParams::default()).await {
-            Ok(_) => {}
-            Err(e) => { not_deleted.push(format!("Unable to undeploy '{}'. Reason:\n{:?}", ingress.name(), e)) }
-        }
-    }
-
-    let api: Api<Service> = Api::namespaced(client.clone(), namespace);
-    for service in deployment.services.iter() {
-        match api.delete(service.name().as_str(), &DeleteParams::default()).await {
-            Ok(_) => {}
-            Err(_) => { not_deleted.push(service.name()) }
-        }
-    }
-
-    let api: Api<StatefulSet> = Api::namespaced(client.clone(), namespace);
-    for stateful_set in deployment.stateful_sets.iter() {
-        match api.delete(stateful_set.name().as_str(), &DeleteParams::default()).await {
-            Ok(_) => {}
-            Err(_) => { not_deleted.push(stateful_set.name()) }
-        }
-    }
-
-    return if not_deleted.len() > 0 {
-        Err(not_deleted)
-    } else {
-        Ok(())
-    };
+pub async fn undeploy_h2o_cluster(client: Client, namespace: &str, name: &str) -> Result<(), Error> {
+    let service_future = service::delete(client.clone(), namespace, name);
+    let statefulset_future = statefulset::delete(client.clone(), namespace, name);
+    tokio::try_join!(service_future, statefulset_future)?;
+    return Ok(());
 }
 
 #[cfg(test)]
@@ -135,38 +52,35 @@ mod tests {
 
     use std::path::PathBuf;
 
-    use super::{Deployment, DeploymentSpecification};
     use super::kube::Client;
 
     use self::tests_common::kubeconfig_location_panic;
+    use crate::crd::{H2OSpec, Resources};
+    use k8s_openapi::api::apps::v1::StatefulSet;
+    use kube::Api;
+    use kube::api::ListParams;
+    use k8s_openapi::api::core::v1::{Pod, Service};
 
-    #[test]
-    fn test_from_kubeconfig() {
+    #[tokio::test]
+    async fn test_from_kubeconfig() {
         let kubeconfig_location: PathBuf = kubeconfig_location_panic();
-        super::from_kubeconfig(kubeconfig_location.as_path());
+        super::from_kubeconfig(kubeconfig_location.as_path()).await;
     }
 
     #[tokio::test]
-    async fn test_deploy_h2o() {
-        let (client, namespace): (Client, String) = super::try_default().unwrap();
-        let deployment_specification: DeploymentSpecification = DeploymentSpecification::new("h2o-k8s-test-cluster".to_string(), namespace,
-                                                                                             80, "256Mi".to_string(), 2, 2, None);
+    async fn test_deploy_h2o_cluster() {
+        let (client, namespace): (Client, String) = super::try_default().await.unwrap();
+        let name: &str = "h2o-test";
+        let resources: Resources = Resources::new(1, "256Mi".to_string(), Some(90));
+        let specification: H2OSpec = H2OSpec::new(2, Option::Some("latest".to_string()), resources, Option::None);
 
-        let mut deployment: Deployment = super::deploy_h2o_cluster(client.clone(), deployment_specification).await.unwrap();
-        assert_eq!(1, deployment.services.len());
-        assert_eq!(1, deployment.stateful_sets.len());
-        assert_eq!(0, deployment.ingresses.len());
+        super::deploy_h2o_cluster(client.clone(), &specification, &namespace, name).await.unwrap();
 
-        // Deploy ingress on top of existing deployment
-        match super::ingress::create(&client, &mut deployment).await {
-            Ok(_) => {
-                assert_eq!(1, deployment.ingresses.len());
-            }
-            Err(e) => {
-                panic!("Test of ingress deployment failed. Reason: \n{}", e);
-            }
-        }
-        let undeployment_result = super::undeploy_h2o(&client, &deployment).await;
-        assert!(undeployment_result.is_ok());
+        let ss_api: Api<StatefulSet> = Api::namespaced(client.clone(), &namespace);
+        assert_eq!(1, ss_api.list(&ListParams::default().labels(&format!("app={}", &name))).await.unwrap().items.len());
+        let service_api: Api<Service> = Api::namespaced(client.clone(), &namespace);
+        assert_eq!(1, service_api.list(&ListParams::default().labels(&format!("app={}", &name))).await.unwrap().items.len());
+
+        super::undeploy_h2o_cluster(client.clone(), &namespace, name).await.unwrap();
     }
 }

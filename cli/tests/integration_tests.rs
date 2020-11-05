@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use assert_cmd::assert::Assert;
 use assert_cmd::Command;
+use names::Generator;
 
 const EXPECTED_GENERAL_HELP: &str = r#"H2O Kubernetes CLI \d+.\d+.\d+.*"#;
 
@@ -58,71 +59,27 @@ Undeploys an existing H2O cluster from Kubernetes.*"#;
 fn test_deploy_undeploy() {
     let kubeconfig_location: PathBuf = tests_common::kubeconfig_location_panic();
     let kubeconfig_location_str: &str = kubeconfig_location.to_str().unwrap();
+    let name: String = Generator::default().next().unwrap();
     let mut deploy_cmd = Command::cargo_bin("h2ok").unwrap();
-    let assert_deploy: Assert = deploy_cmd.args(&["deploy", "--cluster_size", "1", "--kubeconfig", kubeconfig_location_str])
+    let assert_deploy: Assert = deploy_cmd.args(&["deploy","--name", &name, "--cluster_size", "1", "--kubeconfig", kubeconfig_location_str, "--version", "latest"])
         .assert();
 
-    let output: Vec<u8> = assert_deploy.success()
+    assert_deploy.success()
         .code(0)
-        .stdout(predicates::str::is_match(".*\\.h2ok").unwrap())
-        .get_output().clone().stdout;
+        .stdout(predicates::str::is_match(format!("To undeploy, use the 'h2ok undeploy {}' command.", &name)).unwrap());
 
-    let deployment_filename = format!("{}/{}", env!("CARGO_MANIFEST_DIR"), String::from_utf8(output).unwrap().trim());
 
     let mut ingress_cmd: Command = Command::cargo_bin("h2ok").unwrap();
-    let assert_ingress = ingress_cmd.args(&["ingress", "-f", &deployment_filename]).assert();
+    let assert_ingress = ingress_cmd.args(&["ingress", &name]).assert();
 
     assert_ingress.code(0)
         .success();
 
     let mut undeploy_cmd : Command = Command::cargo_bin("h2ok").unwrap();
-    let assert_undeploy: Assert = undeploy_cmd.args(&["undeploy", "-f", &deployment_filename])
+    let assert_undeploy: Assert = undeploy_cmd.args(&["undeploy", &name])
         .assert();
 
     assert_undeploy.success()
         .code(0)
-        .stdout(predicates::str::is_match("Removed deployment 'h2o-\\.*").unwrap());
-}
-
-/// Test if output of `deploy` command is properly accepted by the `undeploy` command.
-/// Output of `deploy` command (if successful) is filename of the deployment descriptor persisted.
-#[test]
-fn test_undeploy_piping() {
-    let kubeconfig_location: PathBuf = tests_common::kubeconfig_location_panic();
-    let kubeconfig_location_str: &str = kubeconfig_location.to_str().unwrap();
-    let mut deploy_cmd = Command::cargo_bin("h2ok").unwrap();
-    let assert_deploy: Assert = deploy_cmd.args(&["deploy", "--cluster_size", "1", "--kubeconfig", kubeconfig_location_str])
-        .assert();
-
-    let output = assert_deploy.success()
-        .code(0)
-        .stdout(predicates::str::is_match(".*\\.h2ok").unwrap())
-        .get_output().clone().stdout;
-
-    let deployment_filename = String::from_utf8(output).unwrap();
-
-    let mut undeploy_cmd = Command::cargo_bin("h2ok")
-        .unwrap();
-    undeploy_cmd.write_stdin(deployment_filename);
-
-    let assert_undeploy: Assert = undeploy_cmd.args(&["undeploy"])
-        .assert();
-
-    assert_undeploy.success()
-        .code(0)
-        .stdout(predicates::str::is_match("Removed deployment 'h2o-\\.*").unwrap());
-}
-
-/// Test if output of `deploy` command is properly accepted by the `undeploy` command.
-/// Output of `deploy` command (if successful) is filename of the deployment descriptor persisted.
-#[test]
-fn test_undeploy_missing_deployment_descriptor() {
-    let mut undeploy_cmd = Command::cargo_bin("h2ok").unwrap();
-    undeploy_cmd.write_stdin("nonexistent_file");
-
-    let assert_undeploy: Assert = undeploy_cmd.args(&["undeploy"]).assert();
-
-    assert_undeploy.failure()
-        .code(1)
-        .stderr(predicates::str::is_match(r#"Unable to process user input: UserInputError \{ kind: UnreachableDeploymentDescriptor \}"#).unwrap());
+        .stdout(predicates::str::is_match(format!("Removed deployment '{}'", &name)).unwrap());
 }

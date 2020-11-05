@@ -1,5 +1,3 @@
-use std::io;
-use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
@@ -8,7 +6,6 @@ use names::Generator;
 use num::Num;
 use regex::Regex;
 
-use crate::cli::CommandErrorKind::{MissingDeploymentDescriptor, UnreachableDeploymentDescriptor};
 
 const APP_NAME: &str = "H2O Kubernetes CLI";
 const APP_VERSION: &str = "0.1.0";
@@ -18,74 +15,62 @@ pub fn get_command() -> Result<Command, UserInputError> {
     let app: App = build_app();
     let args: ArgMatches = app.get_matches();
 
-    if let Some(deploy_args) = args.subcommand_matches("deploy") {
-        let deployment_name: String = extract_string(deploy_args, "name").unwrap_or_else(|| {
-            let mut generator: Generator = Generator::default();
-            return format!("h2o-{}", generator.next().unwrap());
-        });
-        let namespace: Option<String> = extract_string(deploy_args, "namespace");
-        // Args below have defaults, it is therefore safe to unwrap.
-        let cluster_size: u32 = extract_num(deploy_args, "cluster_size").unwrap();
-        let jvm_memory_percentage: u8 = extract_num(deploy_args, "memory_percentage").unwrap();
-        let memory: String = extract_string(deploy_args, "memory").unwrap();
-        let num_cpus: u32 = extract_num(deploy_args, "cpus").unwrap();
-        let kubeconfig_path: Option<PathBuf> = match extract_string(deploy_args, "kubeconfig") {
-            None => { Option::None }
-            Some(kubeconfig) => { Some(PathBuf::from(kubeconfig)) }
-        };
-
-        let deployment: UserDeploymentSpecification = UserDeploymentSpecification::new(deployment_name, namespace, jvm_memory_percentage,
-                                                                                       memory, num_cpus, cluster_size, kubeconfig_path);
-        return Ok(Command::Deployment(deployment));
+    return if let Some(deploy_args) = args.subcommand_matches("deploy") {
+        Ok(Command::Deployment(new_deployment(deploy_args)))
     } else if let Some(undeploy_args) = args.subcommand_matches("undeploy") {
-        return match undeploy_args.value_of("file") {
-            None => {
-                // If there is no file passed as an argument, try to parse file name from stdin.
-                let mut deployment_path_stdin_buf = String::new();
-                io::stdin().read_to_string(&mut deployment_path_stdin_buf).unwrap();
-                if deployment_path_stdin_buf.len() == 0 {
-                    return Err(UserInputError::new(MissingDeploymentDescriptor));
-                }
-                let deployment_descriptor_path: PathBuf = PathBuf::from(&deployment_path_stdin_buf);
-                if deployment_descriptor_path.exists() && deployment_descriptor_path.is_file() {
-                    Ok(Command::Undeploy(deployment_descriptor_path))
-                } else {
-                    let mut pwd_relative_path: PathBuf = std::env::current_dir().unwrap();
-                    pwd_relative_path.push(deployment_descriptor_path);
-
-                    if pwd_relative_path.exists() && pwd_relative_path.is_file() {
-                        Ok(Command::Undeploy(pwd_relative_path))
-                    } else {
-                        Err(UserInputError::new(UnreachableDeploymentDescriptor))
-                    }
-                }
-            }
-            Some(file) => {
-                Ok(Command::Undeploy(PathBuf::from(file)))
-            }
-        };
+        Ok(Command::Undeploy(existing_deployment(undeploy_args)))
     } else if let Some(ingress_args) = args.subcommand_matches("ingress") {
-        return match ingress_args.value_of("file") {
-            None => {
-                Err(UserInputError::new(UnreachableDeploymentDescriptor))
-            }
-            Some(file) => {
-                Ok(Command::Ingress(PathBuf::from(file))) // Safe to do, as the file is checked for existence
-            }
-        };
+        Ok(Command::Ingress(existing_deployment(ingress_args)))
     } else {
-        panic!("Unknown command.");
-    }
+        Result::Err(UserInputError::new(CommandErrorKind::UnknownCommand))
+    };
+}
+
+fn new_deployment(deploy_args: &ArgMatches) -> NewDeploymentSpecification {
+    let deployment_name: String = extract_string(deploy_args, "name").unwrap_or_else(|| {
+        // If no name is provided by the user, generate one
+        let mut generator: Generator = Generator::default();
+        return format!("h2o-{}", generator.next().unwrap());
+    });
+    let namespace: Option<String> = extract_string(deploy_args, "namespace");
+    // Args below have defaults, it is therefore safe to unwrap.
+    let cluster_size: u32 = extract_num(deploy_args, "cluster_size").unwrap();
+    let jvm_memory_percentage: u8 = extract_num(deploy_args, "memory_percentage").unwrap();
+    let memory: String = extract_string(deploy_args, "memory").unwrap();
+    let num_cpus: u32 = extract_num(deploy_args, "cpus").unwrap();
+    let kubeconfig_path: Option<PathBuf> = match extract_string(deploy_args, "kubeconfig") {
+        None => { Option::None }
+        Some(kubeconfig) => { Some(PathBuf::from(kubeconfig)) }
+    };
+    let version: Option<String> = extract_string(deploy_args, "version");
+    let custom_image: Option<String> = extract_string(deploy_args, "image");
+    let custom_command: Option<String> = extract_string(deploy_args, "command");
+
+    NewDeploymentSpecification::new(deployment_name, namespace, version, jvm_memory_percentage,
+                                    memory, num_cpus, cluster_size, kubeconfig_path, custom_image, custom_command)
+}
+
+fn existing_deployment(args: &ArgMatches) -> ExistingDeploymentSpecification {
+    let name = extract_string(args, "name").unwrap_or_else(|| {
+        panic!("Name of the H2O deployment must be provided.");
+    });
+    let namespace = extract_string(args, "namespace");
+    let kubeconfig_path: Option<PathBuf> = match extract_string(args, "kubeconfig") {
+        None => { Option::None }
+        Some(kubeconfig) => { Some(PathBuf::from(kubeconfig)) }
+    };
+
+    ExistingDeploymentSpecification::new(name, namespace, kubeconfig_path)
 }
 
 /// Commands issuable by the user.
 pub enum Command {
-    Deployment(UserDeploymentSpecification),
-    Undeploy(PathBuf),
-    Ingress(PathBuf),
+    Deployment(NewDeploymentSpecification),
+    Undeploy(ExistingDeploymentSpecification),
+    Ingress(ExistingDeploymentSpecification),
 }
 
-pub struct UserDeploymentSpecification {
+pub struct NewDeploymentSpecification {
     /// Name of the deployment. If not provided by the user, the value is randomly generated.
     pub name: String,
     /// Namespace to deploy to - if not provided, an attempt to search in well-known locations is made.
@@ -100,11 +85,32 @@ pub struct UserDeploymentSpecification {
     pub num_h2o_nodes: u32,
     /// Kubeconfig - provided optionally. There are well-known standardized locations to look for Kubeconfig, therefore optional.
     pub kubeconfig_path: Option<PathBuf>,
+    /// H2O version to use, if not custom Docker image is defined.
+    pub version: Option<String>,
+    /// Custom docker image to deploy
+    pub custom_image: Option<String>,
+    /// Custom command for a custom Docker image, if defined. Otherwise noop.
+    pub custom_command: Option<String>,
 }
 
-impl UserDeploymentSpecification {
-    pub fn new(name: String, namespace: Option<String>, memory_percentage: u8, memory: String, num_cpu: u32, num_h2o_nodes: u32, kubeconfig_path: Option<PathBuf>) -> Self {
-        UserDeploymentSpecification { name, namespace, memory_percentage, memory, num_cpu, num_h2o_nodes, kubeconfig_path }
+impl NewDeploymentSpecification {
+    pub fn new(name: String, namespace: Option<String>, version: Option<String>, memory_percentage: u8, memory: String, num_cpu: u32, num_h2o_nodes: u32, kubeconfig_path: Option<PathBuf>, custom_image: Option<String>, custom_command: Option<String>) -> Self {
+        NewDeploymentSpecification { name, namespace, version, memory_percentage, memory, num_cpu, num_h2o_nodes, kubeconfig_path, custom_image, custom_command }
+    }
+}
+
+pub struct ExistingDeploymentSpecification {
+    /// Name of the existing deployment.
+    pub name: String,
+    /// Optional namespace to look in for the deployment. If not specified, the default namespace from Kubeconfig will be used.
+    pub namespace: Option<String>,
+    /// Optional path to kubeconfig. If not specified, the `KUBECONFIG` env var is looked for + several other well known locations might be searched.
+    pub kubeconfig_path: Option<PathBuf>,
+}
+
+impl ExistingDeploymentSpecification {
+    pub fn new(name: String, namespace: Option<String>, kubeconfig_path: Option<PathBuf>) -> Self {
+        ExistingDeploymentSpecification { name, namespace, kubeconfig_path }
     }
 }
 
@@ -123,8 +129,7 @@ impl UserInputError {
 
 #[derive(Debug)]
 pub enum CommandErrorKind {
-    MissingDeploymentDescriptor,
-    UnreachableDeploymentDescriptor,
+    UnknownCommand
 }
 
 /// Attempts to extract/parse a number from user-given argument. If the user did not provide
@@ -187,8 +192,7 @@ fn build_app<'a>() -> App<'a, 'a> {
                 .number_of_values(1)
             )
             .arg(Arg::with_name("name")
-                .long("cluster_name")
-                .short("c")
+                .long("name")
                 .help("Name of the H2O cluster deployment. Used as prefix for K8S entities. Generated if not specified.")
                 .number_of_values(1))
             .arg(Arg::with_name("memory_percentage")
@@ -210,25 +214,65 @@ fn build_app<'a>() -> App<'a, 'a> {
                 .default_value("1")
                 .help("Number of CPUs allocated for each H2O node.")
             )
+            .arg(Arg::with_name("version")
+                .short("v")
+                .long("version")
+                .number_of_values(1)
+                .required_unless("image")
+                .conflicts_with("image")
+                .conflicts_with("command")
+                .help("H2O version to deploy. Noop if custom image is defined.")
+            )
+            .arg(Arg::with_name("image")
+                .short("i")
+                .long("image")
+                .number_of_values(1)
+                .help("H2O version to deploy. Noop if custom image is defined.")
+            )
+            .arg(Arg::with_name("command")
+                .long("command")
+                .number_of_values(1)
+                .help("Custom command for to use for the custom docker image on startup.")
+            )
         )
         .subcommand(SubCommand::with_name("undeploy")
             .about("Undeploys an existing H2O cluster from Kubernetes")
-            .arg(Arg::with_name("file")
-                .long("file")
-                .short("f")
+            .arg(Arg::with_name("kubeconfig")
+                .long("kubeconfig")
+                .short("k")
                 .number_of_values(1)
-                .help("H2O deployment descriptor file path. If not specified, attempt is made to parse deployment descriptor path from stdin.")
                 .validator(self::validate_path)
-            ))
+                .help("Path to 'kubeconfig' yaml file. If not specified, well-known locations are scanned for kubeconfig.")
+            )
+            .arg(Arg::with_name("namespace")
+                .long("namespace")
+                .short("n")
+                .help("Kubernetes cluster namespace to connect to. If not specified, kubeconfig default is used.")
+                .number_of_values(1)
+            )
+            .arg(Arg::with_name("name")
+                .index(1)
+                .help("Name of the H2O cluster deployment. Used as prefix for K8S entities. Generated if not specified.")
+                .number_of_values(1)))
         .subcommand(SubCommand::with_name("ingress")
             .about("Creates an ingress pointing to the given H2O K8S deployment")
-            .arg(Arg::with_name("file")
-                .long("file")
-                .short("f")
+            .arg(Arg::with_name("kubeconfig")
+                .long("kubeconfig")
+                .short("k")
                 .number_of_values(1)
-                .help("H2O deployment descriptor file path. If not specified, attempt is made to parse deployment descriptor path from stdin.")
                 .validator(self::validate_path)
-            ));
+                .help("Path to 'kubeconfig' yaml file. If not specified, well-known locations are scanned for kubeconfig.")
+            )
+            .arg(Arg::with_name("namespace")
+                .long("namespace")
+                .short("n")
+                .help("Kubernetes cluster namespace to connect to. If not specified, kubeconfig default is used.")
+                .number_of_values(1)
+            )
+            .arg(Arg::with_name("name")
+                .index(1)
+                .help("Name of the H2O cluster deployment. Used as prefix for K8S entities. Generated if not specified.")
+                .number_of_values(1)));
 }
 
 /// Validates whether a file under a user-provided path exists.
@@ -284,9 +328,7 @@ mod tests {
     extern crate tests_common;
 
     use std::path::PathBuf;
-
     use clap::{App, ArgMatches};
-
     use tests_common::kubeconfig_location_panic;
 
     #[test]
@@ -307,6 +349,24 @@ mod tests {
         let matches: ArgMatches = app.get_matches_from(args_no_kubeconfig);
         let deploy: &ArgMatches = matches.subcommand_matches("deploy").unwrap();
         assert!(!deploy.is_present("kubeconfig"));
+    }
+
+    // Defining version and custom image does not play well together, as custom image overrides custom version of the official image.
+    // CLI should force user to only declare one of those.
+    #[test]
+    fn test_version_custom_image_conflict() {
+        let kubeconfig_location: PathBuf = kubeconfig_location_panic();
+        let kubeconfig_location: &str = kubeconfig_location.to_str().unwrap();
+
+        // Existing kubeconfig
+        let app: App = super::build_app();
+        let args_with_kubeconfig: Vec<&str> = vec!["h2ok", "deploy", "--kubeconfig", kubeconfig_location, "--cluster_size", "1", "--version", "3.32.0.1", "--image", "nonexisting-image:3.32.0.1"];
+        let matches = app.get_matches_from_safe(args_with_kubeconfig);
+        assert!(matches.is_err());
+        let erroneous_fields: Vec<String> = matches.err().unwrap().info.unwrap();
+        assert_eq!(2, erroneous_fields.len());
+        assert_eq!("image", erroneous_fields.get(0).unwrap());
+        assert_eq!("--version <version>", erroneous_fields.get(1).unwrap());
     }
 
     #[test]

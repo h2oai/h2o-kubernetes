@@ -5,8 +5,7 @@ use crate::crd::H2O;
 
 pub const FINALIZER_NAME: &str = "h2o3.h2o.ai";
 
-pub async fn add_finalizer(client: Client, name: &str, namespace: &str) -> Result<H2O, Error> {
-
+pub async fn add_finalizer(client: Client, namespace: &str, name: &str) -> Result<H2O, Error> {
     let h2o_api: Api<H2O> = Api::namespaced(client, namespace);
     let finalizer = json!({
         "metadata": {

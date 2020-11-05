@@ -2,15 +2,11 @@ extern crate clap;
 extern crate deployment;
 extern crate tokio;
 
-use std::fs::File;
-use std::io::Write;
-use std::path::Path;
-
-use atty::Stream;
 use kube::Client;
 
-use cli::{Command, UserDeploymentSpecification};
-use deployment::{Deployment, DeploymentSpecification};
+use cli::{Command, NewDeploymentSpecification};
+use deployment::crd::{H2OSpec, Resources, CustomImage};
+use crate::cli::ExistingDeploymentSpecification;
 
 mod cli;
 
@@ -24,145 +20,78 @@ async fn main() {
         }
     };
     match command {
-        Command::Deployment(deployment) => {
-            deploy(deployment).await;
+        Command::Deployment(new_deployment) => {
+            deploy(new_deployment).await;
         }
-        Command::Undeploy(deployment_path) => {
-            undeploy(deployment_path.as_path()).await;
+        Command::Undeploy(existing_deployment_spec) => {
+            undeploy(existing_deployment_spec).await;
         }
-        Command::Ingress(deployment_path) => {
-            ingress(&deployment_path).await;
+        Command::Ingress(existing_deployment_spec) => {
+            ingress(existing_deployment_spec).await;
         }
     };
 }
 
-async fn deploy(user_deployment_spec: UserDeploymentSpecification) {
-    let (client, namespace): (Client, String) = if let Some(kubeconfig) = &user_deployment_spec.kubeconfig_path {
-        deployment::from_kubeconfig(kubeconfig.as_path()).await
-    } else {
-        match deployment::try_default().await {
-            Ok(client_namespace) => {
-                client_namespace
-            }
-            Err(_) => { panic!("No kubeconfig provided by the user and search in well-known kubeconfig locations failed") }
-        }
+async fn deploy(user_spec: NewDeploymentSpecification) {
+    let (client, namespace): (Client, String) = match user_spec.kubeconfig_path {
+        None => { deployment::try_default().await.unwrap() }
+        Some(kubeconfig_path) => { deployment::from_kubeconfig(kubeconfig_path.as_path()).await }
     };
 
-    let deployment_spec: DeploymentSpecification = DeploymentSpecification::new(user_deployment_spec.name, namespace, user_deployment_spec.memory_percentage, user_deployment_spec.memory, user_deployment_spec.num_cpu, user_deployment_spec.num_h2o_nodes,
-                                                                                user_deployment_spec.kubeconfig_path);
-    let deployment: Deployment = match deployment::deploy_h2o_cluster(client.clone(), deployment_spec).await {
+    let resources: Resources = Resources::new(user_spec.num_cpu, user_spec.memory, Some(user_spec.memory_percentage));
+    let custom_image: Option<CustomImage> = match user_spec.custom_image {
+        None => { Option::None }
+        Some(img) => {
+            Option::Some(CustomImage::new(img, user_spec.custom_command))
+        }
+    };
+    let specification: H2OSpec = H2OSpec::new(user_spec.num_h2o_nodes, user_spec.version, resources, custom_image);
+    match deployment::deploy_h2o_cluster(client.clone(), &specification, &namespace, &user_spec.name).await {
         Ok(successful_deployment) => { successful_deployment }
         Err(error) => {
-            panic!("Unable to deploy H2O cluster. Error:\n{}", error);
+            panic!("Unable to deploy H2O cluster. Error:\n{:?}", error);
         }
     };
-    let persisted_filename = persist_deployment(&deployment, false).unwrap();
 
-    if running_on_terminal() {
-        println!("Deployment of '{}' completed successfully.", deployment.specification.name);
-        println!("To undeploy, use the 'h2ok undeploy -f {}' command.", persisted_filename);
-    } else {
-        // If not running on a terminal, print only the deployment name.
-        print!("{}.h2ok", deployment.specification.name);
-    }
+    println!("Deployment of '{}' completed successfully.", &user_spec.name);
+    println!("To undeploy, use the 'h2ok undeploy {}' command.", &user_spec.name);
 }
 
-///Persists a Deployment into current workdir. Name of the resulting file is the name of the deployment name followed by `.h2ok` suffix.
-fn persist_deployment(deployment: &Deployment, overwrite: bool) -> Result<String, std::io::Error> {
-    let mut file_name = format!("{}.h2ok", deployment.specification.name);
-    let mut path: &Path = Path::new(file_name.as_str());
-    let mut duplicate_deployment_count: i64 = 0;
-
-    if path.exists() {
-        if overwrite {
-            match std::fs::remove_file(path) {
-                Ok(_) => {}
-                Err(e) => { panic!("Unable to remove existing deployment file. Reason: \n{}", e) }
-            }
-        } else {
-            while path.exists() {
-                println!("Writing file");
-                duplicate_deployment_count += 1;
-                file_name = format!("{}({}).h2ok", deployment.specification.name, duplicate_deployment_count);
-                path = Path::new(file_name.as_str());
-            }
-        }
-    }
-    let mut file: File = match File::create(path) {
-        Ok(file) => { file }
-        Err(err) => {
-            println!("Unable to write deployment file '{}' - skipping. Reason: {}", path.to_str().unwrap(), err);
-            return Err(err);
-        }
+async fn undeploy(specification: ExistingDeploymentSpecification) {
+    let (client, namespace): (Client, String) = match specification.kubeconfig_path {
+        None => { deployment::try_default().await.unwrap() }
+        Some(kubeconfig_path) => { deployment::from_kubeconfig(kubeconfig_path.as_path()).await }
     };
-    file.write_all(serde_json::to_string(deployment).unwrap().as_bytes()).unwrap();
-    return Ok(String::from(path.to_str().unwrap()));
-}
 
-async fn undeploy(deployment_descriptor: &Path) {
-    let (deployment, client): (Deployment, Client) = extract_existing_deployment(deployment_descriptor).await;
-    match deployment::undeploy_h2o(&client, &deployment).await {
+    match deployment::undeploy_h2o_cluster(client.clone(), &specification.namespace.unwrap_or(namespace), &specification.name).await {
         Ok(_) => {}
-        Err(deployment_errs) => {
-            for undeployed in deployment_errs.iter() {
-                print!("Unable to undeploy '{}' - skipping.", undeployed)
-            }
+        Err(error) => {
+            print!("Unable to undeploy H2O named '{}'. Error:\n{:?}", &specification.name, error);
         }
     }
-    println!("Removed deployment '{}'.", deployment.specification.name);
-    std::fs::remove_file(deployment_descriptor).unwrap();
+    println!("Removed deployment '{}'.", &specification.name);
 }
 
-async fn ingress(deployment_descriptor: &Path) {
-    let (mut deployment, client): (Deployment, Client) = extract_existing_deployment(deployment_descriptor).await;
+async fn ingress(specification: ExistingDeploymentSpecification) {
+    let (client, namespace): (Client, String) = match specification.kubeconfig_path {
+        None => { deployment::try_default().await.unwrap() }
+        Some(kubeconfig_path) => { deployment::from_kubeconfig(kubeconfig_path.as_path()).await }
+    };
 
-    match deployment::ingress::create(&client, &mut deployment).await {
-        Ok(_) => {
-            let deployment_file_name: String = persist_deployment(&deployment, true).unwrap();
-            if running_on_terminal() {
-                println!("Ingress '{}' deployed successfully.", &deployment.specification.name);
-                let ingress_ip: Option<String> = deployment::ingress::any_ip(deployment.ingresses.last().unwrap());
-                let ingress_path: Option<String> = deployment::ingress::any_path(deployment.ingresses.last().unwrap());
+    match deployment::ingress::create(client.clone(), &specification.namespace.unwrap_or(namespace), &specification.name).await {
+        Ok(ingress) => {
+            println!("Ingress '{}' deployed successfully.", &specification.name);
+            let ingress_ip: Option<String> = deployment::ingress::any_ip(&ingress);
+            let ingress_path: Option<String> = deployment::ingress::any_path(&ingress);
 
-                if ingress_ip.is_some() && ingress_path.is_some() {
-                    println!("You may now use 'h2o.connect()' to connect to the H2O cluster:");
-                    println!("Python: 'h2o.connect(url=\"http://{}:80{}\")'", ingress_ip.as_ref().unwrap(), ingress_path.as_ref().unwrap());
-                    println!("R: 'h2o.connect(ip = \"{}\", context_path = \"{}\", port=80)'", ingress_ip.as_ref().unwrap(), ingress_path.unwrap().strip_prefix("/").unwrap())
-                }
-            } else {
-                print!("{}", deployment_file_name);
+            if ingress_ip.is_some() && ingress_path.is_some() {
+                println!("You may now use 'h2o.connect()' to connect to the H2O cluster:");
+                println!("Python: 'h2o.connect(url=\"http://{}:80{}\")'", ingress_ip.as_ref().unwrap(), ingress_path.as_ref().unwrap());
+                println!("R: 'h2o.connect(ip = \"{}\", context_path = \"{}\", port=80)'", ingress_ip.as_ref().unwrap(), ingress_path.unwrap().strip_prefix("/").unwrap())
             }
         }
         Err(e) => {
-            panic!("Unable to create ingress for {} deployment. Reason: \n{}", &deployment.specification.name, e);
+            panic!("Unable to create ingress for {} deployment. Reason: \n{}", &specification.name, e);
         }
     }
-}
-
-/// Extracts a deployment descriptor and a Client from a deployment descriptor file.
-/// It is assumed the caller has verified the given file exists - panics otherwise.
-/// If there is no Client described in the `deployment_descriptor`, it is assumed the one from the
-/// environment as defined by `KUBECONFIG` environment variable or some well-known places should be used,
-/// as such a kubeconfig was used to create the original deployment described in the file.
-async fn extract_existing_deployment(deployment_descriptor: &Path) -> (Deployment, Client) {
-    let deployment_file = File::open(deployment_descriptor).unwrap();
-    let deployment: Deployment = serde_json::from_reader(deployment_file).unwrap();
-
-    // Attempt to use the very same kubeconfig to undeploy as was used to deploy
-    let (client, _): (Client, String) = match &deployment.specification.kubeconfig_path {
-        None => {
-            // No kubeconfig specified means the one from the environment should be used.
-            deployment::try_default().await.unwrap()
-        }
-        Some(kubeconfig_path) => {
-            deployment::from_kubeconfig(kubeconfig_path).await
-        }
-    };
-
-    return (deployment, client);
-}
-
-/// Returns true if the CLI has been invoked from a TTY, otherwise false.
-fn running_on_terminal() -> bool {
-    atty::is(Stream::Stdout)
 }

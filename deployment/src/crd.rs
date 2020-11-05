@@ -12,12 +12,16 @@ use tokio::time::Duration;
 #[kube(shortname = "h2o", namespaced)]
 pub struct H2OSpec {
     pub nodes: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
     pub resources: Resources,
+    #[serde(rename = "customImage", skip_serializing_if = "Option::is_none")]
+    pub custom_image: Option<CustomImage>,
 }
 
-impl H2OSpec{
-    pub fn new(nodes: u32, resources: Resources) -> Self {
-        H2OSpec { nodes, resources }
+impl H2OSpec {
+    pub fn new(nodes: u32, version: Option<String>, resources: Resources, custom_image: Option<CustomImage>) -> Self {
+        H2OSpec { nodes, version, resources, custom_image }
     }
 }
 
@@ -29,9 +33,21 @@ pub struct Resources {
     pub memory_percentage: Option<u8>,
 }
 
-impl Resources{
+impl Resources {
     pub fn new(cpu: u32, memory: String, memory_percentage: Option<u8>) -> Self {
         Resources { cpu, memory, memory_percentage }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CustomImage {
+    pub image: String,
+    pub command: Option<String>,
+}
+
+impl CustomImage {
+    pub fn new(image: String, command: Option<String>) -> Self {
+        CustomImage { image, command }
     }
 }
 
@@ -60,6 +76,16 @@ spec:
               properties:
                 nodes:
                   type: integer
+                version:
+                  type: string
+                customImage:
+                  type: object
+                  properties:
+                    image:
+                      type: string
+                    command:
+                      type: string
+                  required: ["image"]
                 resources:
                   type: object
                   properties:
@@ -74,6 +100,9 @@ spec:
                       minimum: 1
                       maximum: 100
                   required: ["cpu", "memory"]
+              oneOf:
+              - required: ["version"]
+              - required: ["custom_image"]
               required: ["nodes", "resources"]
 "#;
 
@@ -88,16 +117,17 @@ pub async fn create(client: Client) -> Result<(), Error> {
 
 pub async fn delete(client: Client) -> Result<(), Error> {
     let api: Api<CustomResourceDefinition> = Api::all(client);
-    api.delete("h2os.h2o.ai", &DeleteParams::default()).await?
-        .map_left(|o| println!("Deleting CRD: {:?}", o.status))
-        .map_right(|s| println!("Deleted CRD: {:?}", s));
+    let result = api.delete("h2os.h2o.ai", &DeleteParams::default()).await;
 
-    return Result::Ok(());
+    return match result {
+        Ok(_) => { Ok(()) }
+        Err(error) => { Err(error) }
+    };
 }
 
 pub async fn exists(client: Client) -> bool {
     let api: Api<CustomResourceDefinition> = Api::all(client);
-    return api.get(RESOURCE_NAME).await.is_ok()
+    return api.get(RESOURCE_NAME).await.is_ok();
 }
 
 pub async fn wait_ready(client: Client, timeout: Duration) -> Result<(), Error> {

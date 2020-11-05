@@ -1,5 +1,4 @@
 use kube::{Client, Api, Error};
-use crate::Deployment;
 use kube::api::{PostParams, DeleteParams};
 use k8s_openapi::api::networking::v1beta1::Ingress;
 
@@ -31,16 +30,21 @@ pub fn h2o_ingress(name: &str, namespace: &str) -> Ingress {
     return ingress;
 }
 
-pub async fn create(client: &Client, deployment: &Deployment) -> Result<Ingress, Error> {
-    let api: Api<Ingress> = Api::namespaced(client.clone(), &deployment.specification.namespace);
-    let ingress_template: Ingress = h2o_ingress(&deployment.specification.name, &deployment.specification.namespace);
+pub async fn create(client: Client, namespace: &str, name: &str) -> Result<Ingress, Error> {
+    let api: Api<Ingress> = Api::namespaced(client, namespace);
+    let ingress_template: Ingress = h2o_ingress(name, name);
 
     return api.create(&PostParams::default(), &ingress_template).await;
 }
 
-pub async fn delete(client: Client, name: &str, namespace: &str) {
-    let statefulset_api: Api<Ingress> = Api::namespaced(client.clone(), namespace);
-    statefulset_api.delete(name, &DeleteParams::default()).await.unwrap();
+pub async fn delete(client: Client, name: &str, namespace: &str) -> Result<(), Error> {
+    let api: Api<Ingress> = Api::namespaced(client, namespace);
+    let result = api.delete(name, &DeleteParams::default()).await;
+
+    return match result {
+        Ok(_) => { Ok(()) }
+        Err(error) => { Err(error) }
+    };
 }
 
 /// Returns the first IP assigned to an Ingress found, if found. Otherwise returns None.
