@@ -130,7 +130,7 @@ pub async fn exists(client: Client) -> bool {
     return api.get(RESOURCE_NAME).await.is_ok();
 }
 
-pub async fn wait_ready(client: Client, timeout: Duration) -> Result<(), Error> {
+pub async fn wait_crd_ready(client: Client, timeout: Duration) -> Result<(), Error> {
     if exists(client.clone()).await {
         return Ok(());
     }

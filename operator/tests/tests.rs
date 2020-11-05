@@ -4,7 +4,7 @@ extern crate tests_common;
 use std::collections::HashMap;
 use std::process::{Child, Command};
 
-use futures::StreamExt;
+use futures::{StreamExt};
 use k8s_openapi::api::core::v1::{Pod, Service};
 use kube::{Api, Client, Error};
 use kube::api::{DeleteParams, ListParams, Meta, PostParams, WatchEvent};
@@ -12,6 +12,7 @@ use log::info;
 use tokio::time::Duration;
 
 use deployment::crd::{H2O, H2OSpec, Resources};
+use kube_runtime::watcher::Event;
 
 fn start_h2o_operator(kubeconfig_location: &str) -> Child {
     let mut cmd = Command::new(assert_cmd::cargo::cargo_bin("h2o-operator"));
@@ -24,13 +25,14 @@ async fn test_deploy() {
     let kubeconfig_location = tests_common::kubeconfig_location_panic();
     let mut h2o_operator_process: Child = start_h2o_operator(kubeconfig_location.to_str().unwrap());
     let (client, namespace): (Client, String) = deployment::try_default().await.unwrap();
+    deployment::crd::wait_crd_ready(client.clone(), Duration::from_secs(180)).await.expect("CRD not available within timeout.");
+
     let h2o_api: Api<H2O> = Api::namespaced(client.clone(), &namespace);
     let h2o_name = "h2o-test";
     let node_count: usize = 3;
 
     // Create H2O in Kubernetes cluster
     let resources: Resources = Resources::new(1, "256Mi".to_string(), Option::None);
-    deployment::crd::wait_ready(client.clone(), Duration::from_secs(180)).await.expect("CRD not available within timeout.");
     let h2o_spec: H2OSpec = H2OSpec::new(node_count as u32, Option::Some("latest".to_string()), resources, Option::None);
     let h2o: H2O = H2O::new(h2o_name, h2o_spec);
     h2o_api.create(&PostParams::default(), &h2o).await.unwrap();
@@ -59,15 +61,14 @@ async fn wait_pods_created(client: Client, name: &str, namespace: &str, expected
     let list_params: ListParams = ListParams::default()
         .labels(&format!("app={}", name))
         .timeout(180);
-
-    let mut pod_watcher = api.watch(&list_params, "0").await.unwrap().boxed();
+    let mut pod_watcher = kube_runtime::watcher(api, list_params).boxed();
     let mut discovered_pods: HashMap<String, Pod> = HashMap::with_capacity(expected_count);
 
     while let Some(result) = pod_watcher.next().await {
         match result {
             Ok(event) => {
                 match event {
-                    WatchEvent::Added(pod) => {
+                    Event::Applied(pod) => {
                         discovered_pods.insert(pod.name().clone(), pod);
                         if discovered_pods.len() == expected_count {
                             break;
