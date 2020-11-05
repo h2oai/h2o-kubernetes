@@ -57,6 +57,7 @@ async fn test_deploy() {
 async fn wait_pods_created(client: Client, name: &str, namespace: &str, expected_count: usize) -> Vec<Pod> {
     let api: Api<Pod> = Api::<Pod>::namespaced(client.clone(), namespace);
     let list_params: ListParams = ListParams::default()
+        .labels(&format!("app={}", name))
         .timeout(180);
 
     let mut pod_watcher = api.watch(&list_params, "0").await.unwrap().boxed();
@@ -66,10 +67,8 @@ async fn wait_pods_created(client: Client, name: &str, namespace: &str, expected
         match result {
             Ok(event) => {
                 match event {
-                    WatchEvent::Added(pod) | WatchEvent::Modified(pod) => {
-                        if pod.name().contains(name) {
-                            discovered_pods.insert(pod.name().clone(), pod);
-                        }
+                    WatchEvent::Added(pod) => {
+                        discovered_pods.insert(pod.name().clone(), pod);
                         if discovered_pods.len() == expected_count {
                             break;
                         }
