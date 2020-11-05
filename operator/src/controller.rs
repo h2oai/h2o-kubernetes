@@ -59,7 +59,7 @@ async fn reconcile(h2o: H2O, context: Context<Data>) -> Result<ReconcilerAction,
 
 fn error_policy(_error: &Error, _context: Context<Data>) -> ReconcilerAction {
     ReconcilerAction {
-        requeue_after: Some(Duration::from_secs(5)),
+        requeue_after: Some(Duration::from_secs(10)),
     }
 }
 

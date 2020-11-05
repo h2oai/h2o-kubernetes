@@ -34,7 +34,7 @@ async fn deploy_crd(client: Client) {
     } else {
         info!("No H2O CustomResourceDefinition detected in the K8S cluster. Attempting to create it.");
         deployment::crd::create(client.clone()).await.unwrap();
-        let timeout: Duration = Duration::from_secs(10);
+        let timeout: Duration = Duration::from_secs(30);
         let result = deployment::crd::wait_crd_ready(client.clone(), timeout).await;
         match result {
             Ok(_) => {
