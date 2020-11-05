@@ -113,6 +113,7 @@ async fn delete_h2o_deployment(h2o: &H2O, context: &Context<Data>) -> Result<Rec
     tokio::try_join!(statefulset_future, service_future)?;
     deployment::finalizer::remove_finalizer(data.client.clone(), name, namespace).await?;
 
+    info!("Deleted H2O '{}'.", &name);
     return Ok(ReconcilerAction {
         requeue_after: Option::None
     });
