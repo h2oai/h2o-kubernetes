@@ -12,7 +12,6 @@ use log::info;
 use tokio::time::Duration;
 
 use deployment::crd::{H2O, H2OSpec, Resources};
-use kube_runtime::watcher::Event;
 
 fn start_h2o_operator(kubeconfig_location: &str) -> Child {
     let mut cmd = Command::new(assert_cmd::cargo::cargo_bin("h2o-operator"));
@@ -21,14 +20,14 @@ fn start_h2o_operator(kubeconfig_location: &str) -> Child {
 }
 
 #[tokio::test]
-async fn test_deploy() {
+async fn test_operator_deploy_undeploy() {
     let kubeconfig_location = tests_common::kubeconfig_location_panic();
     let mut h2o_operator_process: Child = start_h2o_operator(kubeconfig_location.to_str().unwrap());
     let (client, namespace): (Client, String) = deployment::try_default().await.unwrap();
     deployment::crd::wait_crd_ready(client.clone(), Duration::from_secs(180)).await.expect("CRD not available within timeout.");
 
     let h2o_api: Api<H2O> = Api::namespaced(client.clone(), &namespace);
-    let h2o_name = "h2o-test";
+    let h2o_name = "test-operator-deploy-undeploy";
     let node_count: usize = 3;
 
     // Create H2O in Kubernetes cluster
@@ -61,14 +60,15 @@ async fn wait_pods_created(client: Client, name: &str, namespace: &str, expected
     let list_params: ListParams = ListParams::default()
         .labels(&format!("app={}", name))
         .timeout(180);
-    let mut pod_watcher = kube_runtime::watcher(api, list_params).boxed();
+
+    let mut pod_watcher = api.watch(&list_params, "0").await.unwrap().boxed();
     let mut discovered_pods: HashMap<String, Pod> = HashMap::with_capacity(expected_count);
 
     while let Some(result) = pod_watcher.next().await {
         match result {
             Ok(event) => {
                 match event {
-                    Event::Applied(pod) => {
+                    WatchEvent::Added(pod) => {
                         discovered_pods.insert(pod.name().clone(), pod);
                         if discovered_pods.len() == expected_count {
                             break;

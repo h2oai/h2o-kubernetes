@@ -338,14 +338,14 @@ mod tests {
 
         // Existing kubeconfig
         let app: App = super::build_app();
-        let args_with_kubeconfig: Vec<&str> = vec!["h2ok", "deploy", "--kubeconfig", kubeconfig_location, "--cluster_size", "1"];
+        let args_with_kubeconfig: Vec<&str> = vec!["h2ok", "deploy", "--kubeconfig", kubeconfig_location, "--cluster_size", "1", "--version", "latest"];
         let matches: ArgMatches = app.get_matches_from(args_with_kubeconfig);
         let deploy: &ArgMatches = matches.subcommand_matches("deploy").unwrap();
         assert!(deploy.is_present("kubeconfig"));
 
         // No kubeconfig provided - default value provided
         let app: App = super::build_app();
-        let args_no_kubeconfig: Vec<&str> = vec!["h2ok", "deploy", "--cluster_size", "1"];
+        let args_no_kubeconfig: Vec<&str> = vec!["h2ok", "deploy", "--cluster_size", "1", "--version", "latest"];
         let matches: ArgMatches = app.get_matches_from(args_no_kubeconfig);
         let deploy: &ArgMatches = matches.subcommand_matches("deploy").unwrap();
         assert!(!deploy.is_present("kubeconfig"));
@@ -373,14 +373,14 @@ mod tests {
     fn test_namespace() {
         // No namespace provided - use "default" default :)
         let app: App = super::build_app();
-        let args_with_kubeconfig: Vec<&str> = vec!["h2ok", "deploy", "--cluster_size", "1"];
+        let args_with_kubeconfig: Vec<&str> = vec!["h2ok", "deploy", "--cluster_size", "1", "--version", "latest"];
         let matches: ArgMatches = app.get_matches_from(args_with_kubeconfig);
         let deploy: &ArgMatches = matches.subcommand_matches("deploy").unwrap();
         assert!(deploy.value_of("namespace").is_none());
 
         // Custom namespace provided
         let app: App = super::build_app();
-        let args_with_kubeconfig: Vec<&str> = vec!["h2ok", "deploy", "--namespace", "non-default", "--cluster_size", "1"];
+        let args_with_kubeconfig: Vec<&str> = vec!["h2ok", "deploy", "--namespace", "non-default", "--cluster_size", "1", "--version", "latest"];
         let matches: ArgMatches = app.get_matches_from(args_with_kubeconfig);
         let deploy: &ArgMatches = matches.subcommand_matches("deploy").unwrap();
         assert_eq!("non-default", deploy.value_of("namespace").unwrap())

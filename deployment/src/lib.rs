@@ -59,7 +59,7 @@ mod tests {
     use k8s_openapi::api::apps::v1::StatefulSet;
     use kube::Api;
     use kube::api::ListParams;
-    use k8s_openapi::api::core::v1::{Pod, Service};
+    use k8s_openapi::api::core::v1::Service;
 
     #[tokio::test]
     async fn test_from_kubeconfig() {
@@ -70,7 +70,7 @@ mod tests {
     #[tokio::test]
     async fn test_deploy_h2o_cluster() {
         let (client, namespace): (Client, String) = super::try_default().await.unwrap();
-        let name: &str = "h2o-test";
+        let name: &str = "test-deploy-h2o-cluster";
         let resources: Resources = Resources::new(1, "256Mi".to_string(), Some(90));
         let specification: H2OSpec = H2OSpec::new(2, Option::Some("latest".to_string()), resources, Option::None);
 
