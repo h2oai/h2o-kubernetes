@@ -2,45 +2,104 @@ extern crate futures;
 extern crate kube;
 extern crate log;
 
-use std::path::Path;
-
-use kube::{Config, Error};
 use kube::Client;
-use kube::config::{Kubeconfig, KubeConfigOptions};
+use kube::Error;
+
 use crate::crd::H2OSpec;
 
 pub mod crd;
-pub mod ingress;
-pub mod service;
-pub mod statefulset;
 pub mod finalizer;
+pub mod ingress;
+pub mod headless_service;
+pub mod statefulset;
+pub mod client;
 
 
-pub async fn from_kubeconfig(kubeconfig_path: &Path) -> (Client, String) {
-    let kubeconfig: Kubeconfig = Kubeconfig::read_from(kubeconfig_path).unwrap();
-    let config: Config = Config::from_custom_kubeconfig(kubeconfig, &KubeConfigOptions::default()).await.unwrap();
-    let kubeconfig_namespace: String = config.default_ns.clone();
-    let client: Client = Client::new(config);
-    return (client, kubeconfig_namespace);
-}
-
-pub async fn try_default() -> Result<(Client, String), Error> {
-    let config = Config::infer().await?;
-    let kubeconfig_namespace: String = config.default_ns.clone();
-    let client = Client::new(config);
-    return Result::Ok((client, kubeconfig_namespace));
-}
-
-/// Deploys an H2O cluster using the given `client` and `deployment_specification`.
-pub async fn deploy_h2o_cluster(client: Client, specification: &H2OSpec, namespace: &str, name: &str) -> Result<(), Error> {
-    let service_future = service::create(client.clone(), namespace, name);
+/// Creates all the resources necessary to start an H2O cluster according to specification.
+/// Only the resources necessary for the H2O cluster to be up and running are created (exhaustive list):
+/// 1. Pods, each pod with one H2O instance (one H2O JVM). With resources limits and requests set equally
+/// according to the `H2OSpec` given.
+/// 2. A headless service to make the clustering possible. Address of the service is provided to the underlying pods
+/// via an environment variable.
+///
+/// The resources are invoked asynchronously and possibly in parallel. There is no guarantee the underlying
+/// resources are created and the H2O cluster itself is clustered, ready and running when this function returns.
+///
+/// All resources share the same `name`.
+///
+/// # Arguments
+/// - `client` - A Kubernetes client from the `kube` crate to create the resources with.
+/// - `specification` - An instance of `H2OSpec` prescribing the size, resources and settings of an H2O cluster
+/// - `namespace` - Namespace to deploy the H2O cluster resources to. It is the caller's responsibility to make sure
+/// the client has permissions to deploy all the resources listed above into this namespace.
+/// - `name` - Name of the H2O deployment.
+///
+/// # Examples
+///
+/// ```no_run
+/// #[tokio::main]
+/// async fn main() {
+/// use deployment::crd::{Resources, H2OSpec};
+/// use kube::Client;
+/// let (client, namespace): (Client, String) = deployment::client::try_default().await.unwrap();
+/// let name: &str = "test-cluster";
+/// let resources: Resources = Resources::new(1, "512Mi".to_string(), Some(90));
+/// let specification: H2OSpec = H2OSpec::new(
+///     2,
+///     Option::Some("latest".to_string()),
+///     resources,
+///     Option::None,
+///  );
+///
+/// deployment::create_h2o_cluster(client, &specification, &namespace, name);
+/// }
+/// ```
+pub async fn create_h2o_cluster(
+    client: Client,
+    specification: &H2OSpec,
+    namespace: &str,
+    name: &str,
+) -> Result<(), Error> {
+    let service_future = headless_service::create(client.clone(), namespace, name);
     let statefulset_future = statefulset::create(client.clone(), specification, namespace, name);
     tokio::try_join!(service_future, statefulset_future)?;
     return Ok(());
 }
 
-pub async fn undeploy_h2o_cluster(client: Client, namespace: &str, name: &str) -> Result<(), Error> {
-    let service_future = service::delete(client.clone(), namespace, name);
+/// Deletes basic resources tied to an `H2O` deployment of given `name` from the Kubernetes cluster.
+/// By all resources, it is meant:
+/// 1. Pods with H2O nodes,
+/// 2. Headless service for clustering.
+///
+/// No other resources are deleted.
+///
+/// The deletion is invoked asynchronously and potentially in parallel. Therefore, there is no guarantee
+/// the resources are actually deleted at the time this function returns. The deletion itself is taken care of
+/// by the respective controllers.
+///
+/// # Arguments
+/// - `client` - A Kubernetes client from the `kube` crate to delete the resources with.
+/// - `namespace` - Namespace to which the H2O cluster with given `name` has been deployed to.
+/// - `name` - Name of the H2O cluster to delete.
+///
+/// # Examples
+///
+/// ```no_run
+/// #[tokio::main]
+/// async fn main() {
+/// use kube::Client;
+/// let (client, namespace): (Client, String) = deployment::client::try_default().await.unwrap();
+/// let name: &str = "test-cluster";
+///
+/// deployment::delete_h2o_cluster(client.clone(), &namespace, name).await.unwrap();
+/// }
+/// ```
+pub async fn delete_h2o_cluster(
+    client: Client,
+    namespace: &str,
+    name: &str,
+) -> Result<(), Error> {
+    let service_future = headless_service::delete(client.clone(), namespace, name);
     let statefulset_future = statefulset::delete(client.clone(), namespace, name);
     tokio::try_join!(service_future, statefulset_future)?;
     return Ok(());
@@ -52,35 +111,62 @@ mod tests {
 
     use std::path::PathBuf;
 
+    use k8s_openapi::api::apps::v1::StatefulSet;
+    use k8s_openapi::api::core::v1::Service;
+    use kube::Api;
+    use kube::api::ListParams;
+
+    use crate::crd::{H2OSpec, Resources};
+
     use super::kube::Client;
 
     use self::tests_common::kubeconfig_location_panic;
-    use crate::crd::{H2OSpec, Resources};
-    use k8s_openapi::api::apps::v1::StatefulSet;
-    use kube::Api;
-    use kube::api::ListParams;
-    use k8s_openapi::api::core::v1::Service;
 
     #[tokio::test]
     async fn test_from_kubeconfig() {
         let kubeconfig_location: PathBuf = kubeconfig_location_panic();
-        super::from_kubeconfig(kubeconfig_location.as_path()).await;
+        super::client::from_kubeconfig(kubeconfig_location.as_path()).await;
     }
 
     #[tokio::test]
     async fn test_deploy_h2o_cluster() {
-        let (client, namespace): (Client, String) = super::try_default().await.unwrap();
+        let (client, namespace): (Client, String) = super::client::try_default().await.unwrap();
         let name: &str = "test-deploy-h2o-cluster";
         let resources: Resources = Resources::new(1, "256Mi".to_string(), Some(90));
-        let specification: H2OSpec = H2OSpec::new(2, Option::Some("latest".to_string()), resources, Option::None);
+        let specification: H2OSpec = H2OSpec::new(
+            2,
+            Option::Some("latest".to_string()),
+            resources,
+            Option::None,
+        );
 
-        super::deploy_h2o_cluster(client.clone(), &specification, &namespace, name).await.unwrap();
+        super::create_h2o_cluster(client.clone(), &specification, &namespace, name)
+            .await
+            .unwrap();
 
         let ss_api: Api<StatefulSet> = Api::namespaced(client.clone(), &namespace);
-        assert_eq!(1, ss_api.list(&ListParams::default().labels(&format!("app={}", &name))).await.unwrap().items.len());
+        assert_eq!(
+            1,
+            ss_api
+                .list(&ListParams::default().labels(&format!("app={}", &name)))
+                .await
+                .unwrap()
+                .items
+                .len()
+        );
         let service_api: Api<Service> = Api::namespaced(client.clone(), &namespace);
-        assert_eq!(1, service_api.list(&ListParams::default().labels(&format!("app={}", &name))).await.unwrap().items.len());
+        assert_eq!(
+            1,
+            service_api
+                .list(&ListParams::default().labels(&format!("app={}", &name)))
+                .await
+                .unwrap()
+                .items
+                .len()
+        );
 
-        super::undeploy_h2o_cluster(client.clone(), &namespace, name).await.unwrap();
+        super::delete_h2o_cluster(client.clone(), &namespace, name)
+            .await
+            .unwrap();
     }
 }

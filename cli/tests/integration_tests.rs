@@ -1,4 +1,5 @@
 extern crate tests_common;
+
 use std::path::PathBuf;
 
 use assert_cmd::assert::Assert;
@@ -61,7 +62,7 @@ fn test_deploy_undeploy() {
     let kubeconfig_location_str: &str = kubeconfig_location.to_str().unwrap();
     let name: String = Generator::default().next().unwrap();
     let mut deploy_cmd = Command::cargo_bin("h2ok").unwrap();
-    let assert_deploy: Assert = deploy_cmd.args(&["deploy","--name", &name, "--cluster_size", "1", "--kubeconfig", kubeconfig_location_str, "--version", "latest"])
+    let assert_deploy: Assert = deploy_cmd.args(&["deploy", "--name", &name, "--cluster_size", "1", "--kubeconfig", kubeconfig_location_str, "--version", "latest"])
         .assert();
 
     assert_deploy.success()
@@ -75,7 +76,7 @@ fn test_deploy_undeploy() {
     assert_ingress.code(0)
         .success();
 
-    let mut undeploy_cmd : Command = Command::cargo_bin("h2ok").unwrap();
+    let mut undeploy_cmd: Command = Command::cargo_bin("h2ok").unwrap();
     let assert_undeploy: Assert = undeploy_cmd.args(&["undeploy", &name])
         .assert();
 

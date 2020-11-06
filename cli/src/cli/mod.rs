@@ -6,7 +6,6 @@ use names::Generator;
 use num::Num;
 use regex::Regex;
 
-
 const APP_NAME: &str = "H2O Kubernetes CLI";
 const APP_VERSION: &str = "0.1.0";
 
@@ -39,15 +38,25 @@ fn new_deployment(deploy_args: &ArgMatches) -> NewDeploymentSpecification {
     let memory: String = extract_string(deploy_args, "memory").unwrap();
     let num_cpus: u32 = extract_num(deploy_args, "cpus").unwrap();
     let kubeconfig_path: Option<PathBuf> = match extract_string(deploy_args, "kubeconfig") {
-        None => { Option::None }
-        Some(kubeconfig) => { Some(PathBuf::from(kubeconfig)) }
+        None => Option::None,
+        Some(kubeconfig) => Some(PathBuf::from(kubeconfig)),
     };
     let version: Option<String> = extract_string(deploy_args, "version");
     let custom_image: Option<String> = extract_string(deploy_args, "image");
     let custom_command: Option<String> = extract_string(deploy_args, "command");
 
-    NewDeploymentSpecification::new(deployment_name, namespace, version, jvm_memory_percentage,
-                                    memory, num_cpus, cluster_size, kubeconfig_path, custom_image, custom_command)
+    NewDeploymentSpecification::new(
+        deployment_name,
+        namespace,
+        version,
+        jvm_memory_percentage,
+        memory,
+        num_cpus,
+        cluster_size,
+        kubeconfig_path,
+        custom_image,
+        custom_command,
+    )
 }
 
 fn existing_deployment(args: &ArgMatches) -> ExistingDeploymentSpecification {
@@ -56,8 +65,8 @@ fn existing_deployment(args: &ArgMatches) -> ExistingDeploymentSpecification {
     });
     let namespace = extract_string(args, "namespace");
     let kubeconfig_path: Option<PathBuf> = match extract_string(args, "kubeconfig") {
-        None => { Option::None }
-        Some(kubeconfig) => { Some(PathBuf::from(kubeconfig)) }
+        None => Option::None,
+        Some(kubeconfig) => Some(PathBuf::from(kubeconfig)),
     };
 
     ExistingDeploymentSpecification::new(name, namespace, kubeconfig_path)
@@ -94,8 +103,30 @@ pub struct NewDeploymentSpecification {
 }
 
 impl NewDeploymentSpecification {
-    pub fn new(name: String, namespace: Option<String>, version: Option<String>, memory_percentage: u8, memory: String, num_cpu: u32, num_h2o_nodes: u32, kubeconfig_path: Option<PathBuf>, custom_image: Option<String>, custom_command: Option<String>) -> Self {
-        NewDeploymentSpecification { name, namespace, version, memory_percentage, memory, num_cpu, num_h2o_nodes, kubeconfig_path, custom_image, custom_command }
+    pub fn new(
+        name: String,
+        namespace: Option<String>,
+        version: Option<String>,
+        memory_percentage: u8,
+        memory: String,
+        num_cpu: u32,
+        num_h2o_nodes: u32,
+        kubeconfig_path: Option<PathBuf>,
+        custom_image: Option<String>,
+        custom_command: Option<String>,
+    ) -> Self {
+        NewDeploymentSpecification {
+            name,
+            namespace,
+            version,
+            memory_percentage,
+            memory,
+            num_cpu,
+            num_h2o_nodes,
+            kubeconfig_path,
+            custom_image,
+            custom_command,
+        }
     }
 }
 
@@ -110,10 +141,13 @@ pub struct ExistingDeploymentSpecification {
 
 impl ExistingDeploymentSpecification {
     pub fn new(name: String, namespace: Option<String>, kubeconfig_path: Option<PathBuf>) -> Self {
-        ExistingDeploymentSpecification { name, namespace, kubeconfig_path }
+        ExistingDeploymentSpecification {
+            name,
+            namespace,
+            kubeconfig_path,
+        }
     }
 }
-
 
 /// Error while processing user input.
 #[derive(Debug)]
@@ -129,21 +163,22 @@ impl UserInputError {
 
 #[derive(Debug)]
 pub enum CommandErrorKind {
-    UnknownCommand
+    UnknownCommand,
 }
 
 /// Attempts to extract/parse a number from user-given argument. If the user did not provide
 /// any value or the value has not default, returns Option::None. Panics if the argument can not be parsed.
 fn extract_num<T: Num + FromStr>(args: &ArgMatches, arg_name: &str) -> Option<T> {
     return match args.value_of(arg_name) {
-        None => {
-            Option::None
-        }
+        None => Option::None,
         Some(value) => {
             if let Ok(result) = value.parse::<T>() {
                 Option::Some(result)
             } else {
-                panic!("Unable to parse argument '{}'. Given value: '{}'", arg_name, value)
+                panic!(
+                    "Unable to parse argument '{}'. Given value: '{}'",
+                    arg_name, value
+                )
             }
         }
     };
@@ -153,12 +188,8 @@ fn extract_num<T: Num + FromStr>(args: &ArgMatches, arg_name: &str) -> Option<T>
 /// any value or the value has not default, returns Option::None. Panics if the argument can not be parsed.
 fn extract_string(args: &ArgMatches, arg_name: &str) -> Option<String> {
     return match args.value_of(arg_name) {
-        None => {
-            Option::None
-        }
-        Some(value) => {
-            Some(value.to_string())
-        }
+        None => Option::None,
+        Some(value) => Some(value.to_string()),
     };
 }
 
@@ -280,7 +311,10 @@ fn validate_path(user_provided_path: String) -> Result<(), String> {
     return if Path::new(&user_provided_path).is_file() {
         Result::Ok(())
     } else {
-        Result::Err(String::from(format!("Invalid file path: '{}'", user_provided_path)))
+        Result::Err(String::from(format!(
+            "Invalid file path: '{}'",
+            user_provided_path
+        )))
     };
 }
 
@@ -303,7 +337,10 @@ fn validate_int_greater_than_zero(input: String) -> Result<(), String> {
 fn validate_percentage(input: String) -> Result<(), String> {
     let number: i64 = input.parse::<i64>().unwrap();
     return if number < 0 || number > 100 {
-        Result::Err(format!("Error: The number must be withing range <{},{}>.", 0, 100))
+        Result::Err(format!(
+            "Error: The number must be withing range <{},{}>.",
+            0, 100
+        ))
     } else {
         Result::Ok(())
     };
@@ -318,17 +355,21 @@ fn validate_memory(input: String) -> Result<(), String> {
     return if memory_regexp.is_match(&input) {
         Result::Ok(())
     } else {
-        Result::Err(format!("Memory requirement must match the following pattern: {}. For example 1Gi or 1024Mi.", MEMORY_PATTERN))
+        Result::Err(format!(
+            "Memory requirement must match the following pattern: {}. For example 1Gi or 1024Mi.",
+            MEMORY_PATTERN
+        ))
     };
 }
-
 
 #[cfg(test)]
 mod tests {
     extern crate tests_common;
 
     use std::path::PathBuf;
+
     use clap::{App, ArgMatches};
+
     use tests_common::kubeconfig_location_panic;
 
     #[test]
@@ -338,14 +379,30 @@ mod tests {
 
         // Existing kubeconfig
         let app: App = super::build_app();
-        let args_with_kubeconfig: Vec<&str> = vec!["h2ok", "deploy", "--kubeconfig", kubeconfig_location, "--cluster_size", "1", "--version", "latest"];
+        let args_with_kubeconfig: Vec<&str> = vec![
+            "h2ok",
+            "deploy",
+            "--kubeconfig",
+            kubeconfig_location,
+            "--cluster_size",
+            "1",
+            "--version",
+            "latest",
+        ];
         let matches: ArgMatches = app.get_matches_from(args_with_kubeconfig);
         let deploy: &ArgMatches = matches.subcommand_matches("deploy").unwrap();
         assert!(deploy.is_present("kubeconfig"));
 
         // No kubeconfig provided - default value provided
         let app: App = super::build_app();
-        let args_no_kubeconfig: Vec<&str> = vec!["h2ok", "deploy", "--cluster_size", "1", "--version", "latest"];
+        let args_no_kubeconfig: Vec<&str> = vec![
+            "h2ok",
+            "deploy",
+            "--cluster_size",
+            "1",
+            "--version",
+            "latest",
+        ];
         let matches: ArgMatches = app.get_matches_from(args_no_kubeconfig);
         let deploy: &ArgMatches = matches.subcommand_matches("deploy").unwrap();
         assert!(!deploy.is_present("kubeconfig"));
@@ -360,7 +417,18 @@ mod tests {
 
         // Existing kubeconfig
         let app: App = super::build_app();
-        let args_with_kubeconfig: Vec<&str> = vec!["h2ok", "deploy", "--kubeconfig", kubeconfig_location, "--cluster_size", "1", "--version", "3.32.0.1", "--image", "nonexisting-image:3.32.0.1"];
+        let args_with_kubeconfig: Vec<&str> = vec![
+            "h2ok",
+            "deploy",
+            "--kubeconfig",
+            kubeconfig_location,
+            "--cluster_size",
+            "1",
+            "--version",
+            "3.32.0.1",
+            "--image",
+            "nonexisting-image:3.32.0.1",
+        ];
         let matches = app.get_matches_from_safe(args_with_kubeconfig);
         assert!(matches.is_err());
         let erroneous_fields: Vec<String> = matches.err().unwrap().info.unwrap();
@@ -373,14 +441,30 @@ mod tests {
     fn test_namespace() {
         // No namespace provided - use "default" default :)
         let app: App = super::build_app();
-        let args_with_kubeconfig: Vec<&str> = vec!["h2ok", "deploy", "--cluster_size", "1", "--version", "latest"];
+        let args_with_kubeconfig: Vec<&str> = vec![
+            "h2ok",
+            "deploy",
+            "--cluster_size",
+            "1",
+            "--version",
+            "latest",
+        ];
         let matches: ArgMatches = app.get_matches_from(args_with_kubeconfig);
         let deploy: &ArgMatches = matches.subcommand_matches("deploy").unwrap();
         assert!(deploy.value_of("namespace").is_none());
 
         // Custom namespace provided
         let app: App = super::build_app();
-        let args_with_kubeconfig: Vec<&str> = vec!["h2ok", "deploy", "--namespace", "non-default", "--cluster_size", "1", "--version", "latest"];
+        let args_with_kubeconfig: Vec<&str> = vec![
+            "h2ok",
+            "deploy",
+            "--namespace",
+            "non-default",
+            "--cluster_size",
+            "1",
+            "--version",
+            "latest",
+        ];
         let matches: ArgMatches = app.get_matches_from(args_with_kubeconfig);
         let deploy: &ArgMatches = matches.subcommand_matches("deploy").unwrap();
         assert_eq!("non-default", deploy.value_of("namespace").unwrap())

@@ -2,6 +2,7 @@ extern crate deployment;
 extern crate futures;
 extern crate log;
 extern crate simple_logger;
+extern crate tokio;
 
 use std::time::Duration;
 
@@ -13,26 +14,96 @@ use deployment::crd;
 
 mod controller;
 
+/// Entrypoint to H2O Open Source Kubernetes operator executable. This operator acts upon H2O-related
+/// Custom Resource Definitions (CRDs), handling their state changes, creation and deletion.
+///
+/// # Before controller is ran
+///
+/// 1. First, utility libraries (logging etc.) are initialized.
+/// 2. An attempt to obtain a Kubernetes client from a Kubeconfig is made.
+/// 3. H2O Custom resource definition (CRD) presence in cluster is detected. If not present
+///     attempt to deploy it is made. If unsuccessful (permissions), the operator shuts down.
+///
+/// # Controller
+///
+/// The controller structure itself comes from `kube*` crates, specifically from the [kube-runtime](https://crates.io/crates/kube-runtime) crate.
+/// These are Rust's Kubernetes client libraries.
+/// It runs in an endless loop, dispatching incoming requests for changes regarding H2O's CRDs to
+/// custom logic.
+///
+/// # Asynchronous execution
+///
+/// The whole operator uses asynchronous code, as Kubernetes itself (and thus the `kube` client) are
+/// asynchronous as well. In Rust, a runtime has to bee selected by the user, as the core [async/await](https://rust-lang.github.io/async-book/01_getting_started/01_chapter.html)
+/// functionality from the standard library is runtime-agnostic. [Tokio](https://tokio.rs/) is a widely-used library
+/// which provides such Runtime.
+///
+/// There are two basic types of executors - single-threaded executor (one context switching OS-level thread)
+/// and a multi-threaded executor. The multi-threaded executor is [enabled by default](https://docs.rs/tokio/0.3.3/tokio/attr.main.html)
+/// and defaults to number of detected CPUs. To ensure optimal utilization of resources, the default option is kept.
+///
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    init();
-    let (client, namespace): (Client, String) = deployment::try_default().await?;
+    initialize_logging();
+    let (client, namespace): (Client, String) = deployment::client::try_default().await?;
     info!("Kubeconfig found. Using default namespace: {}", &namespace);
-    deploy_crd(client.clone()).await;
+    ensure_crd_created(client.clone()).await;
     controller::run(client.clone(), &namespace).await;
 
     Ok(())
 }
 
-fn init() {
-    SimpleLogger::new().with_level(LevelFilter::Info).init().unwrap();
+/// Initializes a possibly changing implementation of the [log](https://crates.io/crates/log) crate,
+/// which acts as a facade.
+///
+/// Default logging level is set to `INFO`.
+///
+/// # Panics
+/// Guaranteed to `panic!` when the logger implementation is unable to be initialized, for any reason,
+/// as running the operator without logging is not desirable.
+///
+/// # Examples
+///
+/// ```no_run
+/// initialize_logging();
+/// ```
+fn initialize_logging() {
+    SimpleLogger::new()
+        .with_level(LevelFilter::Info)
+        .init()
+        .unwrap();
 }
 
-async fn deploy_crd(client: Client) {
+/// Ensures all CRDs handled by this operator are present in the cluster. First, the Kubernetes API
+/// is queried for existing CRD deployments.Version of the CRDs is not taken into account.
+/// If any of the required CRDs is missing, an attempt is made to create it.
+/// If CRDs are missing and creation attempt fails, this method calls `std::process:exit` to end the
+/// operator process with status code of `1`. Before `exit`, the error message with the cause of failure
+/// is logged on `error` level.
+///
+/// The CRDs are created cluster-wide and not tied to a specific Kubernetes namespace. This is one possible source of
+/// errors, as permissions of the user running the operator might not suffice.
+///
+/// # Arguments
+///
+/// - `client` - A Kubernetes client from the `kube` crate - to make API queries and CRD creation possible.
+///
+/// # Examples
+///
+/// ```no_run
+/// extern crate kube;
+/// use kube::Client;
+///
+/// let client = Client::try_default();
+/// ensure_crd_created(client).await;
+/// ```
+async fn ensure_crd_created(client: Client) {
     if crd::exists(client.clone()).await {
         info!("Detected H2O CustomResourceDefinition already present in the cluster.");
     } else {
-        info!("No H2O CustomResourceDefinition detected in the K8S cluster. Attempting to create it.");
+        info!(
+            "No H2O CustomResourceDefinition detected in the K8S cluster. Attempting to create it."
+        );
         deployment::crd::create(client.clone()).await.unwrap();
         let timeout: Duration = Duration::from_secs(30);
         let result = deployment::crd::wait_crd_ready(client.clone(), timeout).await;
@@ -41,7 +112,10 @@ async fn deploy_crd(client: Client) {
                 info!("Successfully deployed H2O CustomResourceDefinition into the cluster.");
             }
             Err(_) => {
-                error!("H2O CustomResourceDefinition not accepted in {} seconds.", timeout.as_secs());
+                error!(
+                    "H2O CustomResourceDefinition not accepted in {} seconds.",
+                    timeout.as_secs()
+                );
                 std::process::exit(1);
             }
         }

@@ -1,23 +1,23 @@
 [package]
 name = "h2o-operator"
 version = "0.1.0"
-authors = ["Pavel Pscheidl <pavel@h2o.ai>"]
+authors = ["Pavel Pscheidl <pavel@h2o.ai>", "Michal Kurka <michal.kurka@h2o.ai>"]
 edition = "2018"
 
 [dependencies]
 kube = { version = "0.43.0", default-features = true, features = ["derive"] }
 kube-derive = "0.43.0"
-kube-runtime =   "0.43.0"
+kube-runtime = "0.43.0"
 k8s-openapi = { version = "0.9.0", default-features = false, features = ["v1_17"] }
 futures = "~0.3"
 serde = "~1.0"
 serde_yaml = "~0.8"
 serde_json = "~1.0"
-tokio = { version = "0.2.22", features = ["macros", "rt-core"] }
+tokio = { version = "0.2.22", features = ["macros", "rt-threaded"] }
 log = "0.4.11"
 simple_logger = "1.11.0"
-deployment = {path = "../deployment"}
+deployment = { path = "../deployment" }
 
 [dev-dependencies]
 assert_cmd = "1.0.1"
-tests_common = {path = "../tests_common" }
+tests_common = { path = "../tests_common" }

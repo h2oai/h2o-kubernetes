@@ -9,21 +9,16 @@ use k8s_openapi::api::core::v1::{Pod, Service};
 use kube::{Api, Client, Error};
 use kube::api::{DeleteParams, ListParams, Meta, PostParams, WatchEvent};
 use log::info;
-use tokio::time::Duration;
 
 use deployment::crd::{H2O, H2OSpec, Resources};
-
-fn start_h2o_operator(kubeconfig_location: &str) -> Child {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin("h2o-operator"));
-    cmd.env("KUBECONFIG", kubeconfig_location);
-    return cmd.spawn().unwrap();
-}
+use std::time::Duration;
+use std::path::PathBuf;
 
 #[tokio::test]
 async fn test_operator_deploy_undeploy() {
-    let kubeconfig_location = tests_common::kubeconfig_location_panic();
+    let kubeconfig_location : PathBuf = tests_common::kubeconfig_location_panic();
     let mut h2o_operator_process: Child = start_h2o_operator(kubeconfig_location.to_str().unwrap());
-    let (client, namespace): (Client, String) = deployment::try_default().await.unwrap();
+    let (client, namespace): (Client, String) = deployment::client::try_default().await.unwrap();
     deployment::crd::wait_crd_ready(client.clone(), Duration::from_secs(180)).await.expect("CRD not available within timeout.");
 
     let h2o_api: Api<H2O> = Api::namespaced(client.clone(), &namespace);
@@ -53,6 +48,12 @@ async fn test_operator_deploy_undeploy() {
     assert!(wait_pods_deleted(client.clone(), h2o_name, &namespace).await.is_ok());
 
     h2o_operator_process.kill().unwrap();
+}
+
+fn start_h2o_operator(kubeconfig_location: &str) -> Child {
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin("h2o-operator"));
+    cmd.env("KUBECONFIG", kubeconfig_location);
+    return cmd.spawn().unwrap();
 }
 
 async fn wait_pods_created(client: Client, name: &str, namespace: &str, expected_count: usize) -> Vec<Pod> {
