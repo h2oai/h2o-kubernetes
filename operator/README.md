@@ -8,7 +8,7 @@ A command line tool to ease the deployment (and undeployment) of H2O open-source
 
 ## Usage
 
-![H2O Usage in console](h2ok.gif)
+![H2O Usage in console](../.img/h2o-operator.gif)
 
 Type `h2ok --help` for an overview of available subcommands. Use the `--help` or `-h` flag in combination with any of the subcommands to receive help for those subcommands, for example `h2ok deploy -h`.
 
