@@ -5,8 +5,8 @@
 Repository with official tools to aid the deployment of [H2O Machine Learning platform](https://github.com/h2oai/h2o-3) to [Kubernetes](https://kubernetes.io/).
 There are two essential tools to be found in this repository:
 
-1. **H2O Operator** - for first class H2O Kubernetes support ([README](cli/README.md)),
-1. **Command Line Interface** - to ease deployment of the operator and/or deploy H2O to clusters without the operator ([README](operator/README.md)).
+1. **H2O Operator** - for first class H2O Kubernetes support ([README](operator/README.md)),
+1. **Command Line Interface** - to ease deployment of the operator and/or deploy H2O to clusters without the operator ([README](cli/README.md)).
 
 Binaries available: [**Download for Mac / Linux / Windows**](https://github.com/h2oai/h2o-kubernetes/releases).
 Or [build from source](CONTRIBUTING.md).
