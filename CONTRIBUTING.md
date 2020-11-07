@@ -11,6 +11,8 @@ There are three projects in the workspace defined by the top-level [Cargo.toml](
 
 Two binaries (`cli`, `operator`) and one library (`deployment`) with common code for both binaries.
 
+For code formatting, please use [rustfmt](https://github.com/rust-lang/rustfmt).
+
 ## Building, testing and running
 
 - Development build (whole workspace) : `cargo build`
