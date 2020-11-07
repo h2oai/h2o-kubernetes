@@ -10,6 +10,26 @@ A command line tool to ease the deployment (and undeployment) of H2O open-source
 
 ![H2O Usage in console](../.img/h2o-operator.gif)
 
+Once the `h2o-operator` is running, an `H2O` resource can be used together with `kubectl`to deploy H2O into Kubernetes.
+Example `h2o.yaml` YAML:
+
+```yaml
+apiVersion: h2o.ai/v1
+kind: H2O
+metadata:
+  name: h2o-test
+spec:
+  nodes: 3
+  version: "3.32.0.1"
+  resources:
+    cpu: 1
+    memory: "512Mi"
+    memoryPercentage: 90
+```
+
+After creating the resource by using`kubectl apply -f h2o.yaml`, all the necessary H2O resources are created.
+Deletion is as simple as `kubectl delete h2o h2o-test`.
+
 ## Building, testing and running
 
 Refer to the [contributing guide](../CONTRIBUTING.md) for detailed instructions on how to build and develop this project.
