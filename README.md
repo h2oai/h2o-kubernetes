@@ -2,52 +2,33 @@
 
 ![Rust](https://github.com/h2oai/h2o-kubernetes/workflows/Rust/badge.svg)
 
-A command line tool to ease the deployment (and undeployment) of H2O open-source machine learning platform [H2O-3](https://github.com/h2oai/h2o-3) to Kubernetes. Currently in beta, with stable basic deployment/undeployment features. Official [H2O Kubernetes Docker images](https://hub.docker.com/r/h2oai/h2o-open-source-k8s) are used.
+Repository with official tools to aid the deployment of [H2O Machine Learning platform](https://github.com/h2oai/h2o-3) to [Kubernetes](https://kubernetes.io/).
+There are two essential tools to be found in this repository:
 
-[Download for Mac/Linux/Windows](https://github.com/h2oai/h2o-kubernetes/releases).
+1. **H2O Operator** - for first class H2O Kubernetes support ([README](cli/README.md)),
+1. **Command Line Interface** - to ease deployment of the operator and/or deploy H2O to clusters without the operator ([README](operator/README.md)).
 
-## Usage
+Binaries available: [**Download for Mac / Linux / Windows**](https://github.com/h2oai/h2o-kubernetes/releases).
+Or [build from source](CONTRIBUTING.md).
 
-![H2O Usage in console](h2ok.gif)
+![operator](.img/h2o-operator.gif)
 
-Type `h2ok --help` for an overview of available subcommands. Use the `--help` or `-h` flag in combination with any of the subcommands to receive help for those subcommands, for example `h2ok deploy -h`.
+The **operator** is an implementation of [Kubernetes operator pattern](https://kubernetes.io/docs/concepts/extend-kubernetes/operator/)
+specifically for H2O. Once deployed to a Kubernetes cluster, a new custom resource named `H2O` is recognized by Kubernetes,
+making it easy to create H2O clusters inside Kubernetes cluster using plain `kubectl`. The **CLI** is a binary usually running on the client's
+side, usable to deploy the operator itself into Kubernetes cluster or create H2O clusters in Kubernetes in cases when the **operator**
+itself may not be used. There are also [Helm charts](https://charts.h2o.ai/) available as yet another way to deploy H2O into Kubernetes.
+Using the operator first and then falling back to CLI/Helm is the recommended approach.
 
-There are three basic commands:
-1. `h2ok deploy` - deploys H2O cluster into a Kubernetes cluster,
-1. `h2ok undeploy`- removes existing H2O deployment from a Kubernetes cluster,
-1. `h2ok ingress` - creates an ingress for existing H2O Kubernetes deployment.
+For detailed instructions on how to use each tool, please refer to the specific user guides:
 
-### Deploy
-Deploys an H2O cluster into Kubernetes by creating all the necessary components. Once successfully deployed a deployment descriptor file with cluster name is saved. Such a file can be used to undeploy the H2O cluster or built on top of by adding additional services.
-If deployment of any of the component fails a rollback of existing components is attempted automatically. If a cluster name is not provided, one is generated automatically.
- 
-**Mininal example**: `h2ok deploy --cluster_size 3`.
+- [CLI](cli/README.md)
+- [OPERATOR](operator/README.md)
 
-**Minimal example - custom kubeconfig and namespace**: `h2ok deploy --cluster-size 3 --kubeconfig /etc/rancher/k3s/k3s.yaml --namespace default`
+## Contributing
 
-The `namespace` option defaults to `default`. If `kubeconfig` is not defined, well-known locations and environment variables are searched.
+Contributions are welcome and encouraged. Please refer to the [**contributing guide**](CONTRIBUTING.md). If you've encountered a bug,
+or there is any feature missing, please create an [issue on GitHub](https://github.com/h2oai/h2o-kubernetes).
 
-After each deployment is done, a file with cluster's name and an `.h2ok` suffix is saved to the working directory. Such a file serves as a descriptor of the deployment done and may later be used by `h2ok undeploy -f h2o-deployment-name.h2ok` to automatically undeploy the whole H2O cluster from Kubernetes.
-
-### Undeploy
-Undeploys existing deployment from a Kubernetes cluster using deployment descriptor generated during deployment operations. Requires a deployment descriptor file with `.h2ok` suffix.
-
-**Minimal example**: `h2ok undeploy -f h2o-deployment-name.h2ok`
-
-### Ingress
-Adds an ingress for an existing deployment. Requires a deployment descriptor file with `.h2ok` suffix as an argument. The ingress is set to port 80 and targets the service
-associated with the given H2O cluster inside the H2O deployment descriptor automatically. Name of the ingress follows the `<h2o-deployment-name>-ingress` convention.
-
-**Minimal example**: `h2ok ingress -f h2o-deployment-name.h2ok`
-
-## Building, testing and running
-
-H2O Kubernetes CLI (`h2ok`) is written in [Rust](https://www.rust-lang.org/), using its standard built-in tools. The build and dependency management tool is therefore [Cargo](https://crates.io/).
-
-- Development build : `cargo build`
-- Release build: `cargo build --release`
-- Development run: `cargo run -- deploy --namespace default --kubeconfig /etc/rancher/k3s/k3s.yaml --cluster_size 3`
-- Test: `cargo test` - please note many tests have prerequisities - running Kubernetes cluster and the `KUBECONFIG` variable set.
-
-## Automated tests
-Automated tests are run via GitHub actions - the test environemnt provides the `KUBECONFIG` environment variable with path to a [K3S](https://k3s.io/) Kubernetes instance.
+## License
+This project is licensed under the [Apache License 2.0](LICENSE).

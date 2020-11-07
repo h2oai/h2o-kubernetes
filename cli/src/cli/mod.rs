@@ -15,9 +15,9 @@ pub fn get_command() -> Result<Command, UserInputError> {
     let args: ArgMatches = app.get_matches();
 
     return if let Some(deploy_args) = args.subcommand_matches("deploy") {
-        Ok(Command::Deployment(new_deployment(deploy_args)))
+        Ok(Command::CreateCluster(new_deployment(deploy_args)))
     } else if let Some(undeploy_args) = args.subcommand_matches("undeploy") {
-        Ok(Command::Undeploy(existing_deployment(undeploy_args)))
+        Ok(Command::DeleteCluster(existing_deployment(undeploy_args)))
     } else if let Some(ingress_args) = args.subcommand_matches("ingress") {
         Ok(Command::Ingress(existing_deployment(ingress_args)))
     } else {
@@ -25,7 +25,9 @@ pub fn get_command() -> Result<Command, UserInputError> {
     };
 }
 
-fn new_deployment(deploy_args: &ArgMatches) -> NewDeploymentSpecification {
+/// Extracts specification of a new cluster from user's input into `UserNewClusterSpecification` struct.
+/// If no cluster name is provided, one will be generated randomly.
+fn new_deployment(deploy_args: &ArgMatches) -> UserNewClusterSpecification {
     let deployment_name: String = extract_string(deploy_args, "name").unwrap_or_else(|| {
         // If no name is provided by the user, generate one
         let mut generator: Generator = Generator::default();
@@ -45,7 +47,7 @@ fn new_deployment(deploy_args: &ArgMatches) -> NewDeploymentSpecification {
     let custom_image: Option<String> = extract_string(deploy_args, "image");
     let custom_command: Option<String> = extract_string(deploy_args, "command");
 
-    NewDeploymentSpecification::new(
+    UserNewClusterSpecification::new(
         deployment_name,
         namespace,
         version,
@@ -59,7 +61,14 @@ fn new_deployment(deploy_args: &ArgMatches) -> NewDeploymentSpecification {
     )
 }
 
-fn existing_deployment(args: &ArgMatches) -> ExistingDeploymentSpecification {
+/// Extracts arguments for operations on top of an existing deployment for any CLI subcommand
+/// operating on top of it.
+///
+/// # Panics
+///
+/// If the required parameters are unable to be extracted from user's input, it makes
+/// no sense to continue running the CLI and the function panics.
+fn existing_deployment(args: &ArgMatches) -> UserExistingClusterSpecification {
     let name = extract_string(args, "name").unwrap_or_else(|| {
         panic!("Name of the H2O deployment must be provided.");
     });
@@ -69,18 +78,20 @@ fn existing_deployment(args: &ArgMatches) -> ExistingDeploymentSpecification {
         Some(kubeconfig) => Some(PathBuf::from(kubeconfig)),
     };
 
-    ExistingDeploymentSpecification::new(name, namespace, kubeconfig_path)
+    UserExistingClusterSpecification::new(name, namespace, kubeconfig_path)
 }
 
 /// Commands issuable by the user.
 pub enum Command {
-    Deployment(NewDeploymentSpecification),
-    Undeploy(ExistingDeploymentSpecification),
-    Ingress(ExistingDeploymentSpecification),
+    CreateCluster(UserNewClusterSpecification),
+    DeleteCluster(UserExistingClusterSpecification),
+    Ingress(UserExistingClusterSpecification),
 }
 
-pub struct NewDeploymentSpecification {
-    /// Name of the deployment. If not provided by the user, the value is randomly generated.
+
+/// Specification of an H2O cluster based on user's input from the CLI
+pub struct UserNewClusterSpecification {
+    /// Name of the cluster. If not provided by the user, the value is randomly generated.
     pub name: String,
     /// Namespace to deploy to - if not provided, an attempt to search in well-known locations is made.
     pub namespace: Option<String>,
@@ -102,7 +113,7 @@ pub struct NewDeploymentSpecification {
     pub custom_command: Option<String>,
 }
 
-impl NewDeploymentSpecification {
+impl UserNewClusterSpecification {
     pub fn new(
         name: String,
         namespace: Option<String>,
@@ -115,7 +126,7 @@ impl NewDeploymentSpecification {
         custom_image: Option<String>,
         custom_command: Option<String>,
     ) -> Self {
-        NewDeploymentSpecification {
+        UserNewClusterSpecification {
             name,
             namespace,
             version,
@@ -130,7 +141,7 @@ impl NewDeploymentSpecification {
     }
 }
 
-pub struct ExistingDeploymentSpecification {
+pub struct UserExistingClusterSpecification {
     /// Name of the existing deployment.
     pub name: String,
     /// Optional namespace to look in for the deployment. If not specified, the default namespace from Kubeconfig will be used.
@@ -139,9 +150,9 @@ pub struct ExistingDeploymentSpecification {
     pub kubeconfig_path: Option<PathBuf>,
 }
 
-impl ExistingDeploymentSpecification {
+impl UserExistingClusterSpecification {
     pub fn new(name: String, namespace: Option<String>, kubeconfig_path: Option<PathBuf>) -> Self {
-        ExistingDeploymentSpecification {
+        UserExistingClusterSpecification {
             name,
             namespace,
             kubeconfig_path,
@@ -214,7 +225,7 @@ fn build_app<'a>() -> App<'a, 'a> {
                 .short("k")
                 .number_of_values(1)
                 .validator(self::validate_path)
-                .help("Path to 'kubeconfig' yaml file. If not specified, well-known locations are scanned for kubeconfig.")
+                .help("Path to 'kubeconfig' yaml file. If not specified, well-known locations are scanned for kubeconfig, starting with the KUBECONFIG environment variable.")
             )
             .arg(Arg::with_name("namespace")
                 .long("namespace")
@@ -273,7 +284,7 @@ fn build_app<'a>() -> App<'a, 'a> {
                 .short("k")
                 .number_of_values(1)
                 .validator(self::validate_path)
-                .help("Path to 'kubeconfig' yaml file. If not specified, well-known locations are scanned for kubeconfig.")
+                .help("Path to 'kubeconfig' yaml file. If not specified, well-known locations are scanned for kubeconfig, starting with the KUBECONFIG environment variable.")
             )
             .arg(Arg::with_name("namespace")
                 .long("namespace")
@@ -292,7 +303,7 @@ fn build_app<'a>() -> App<'a, 'a> {
                 .short("k")
                 .number_of_values(1)
                 .validator(self::validate_path)
-                .help("Path to 'kubeconfig' yaml file. If not specified, well-known locations are scanned for kubeconfig.")
+                .help("Path to 'kubeconfig' yaml file. If not specified, well-known locations are scanned for kubeconfig, starting with the KUBECONFIG environment variable.")
             )
             .arg(Arg::with_name("namespace")
                 .long("namespace")

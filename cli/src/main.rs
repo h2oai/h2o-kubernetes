@@ -4,13 +4,34 @@ extern crate tokio;
 
 use kube::Client;
 
-use cli::{Command, NewDeploymentSpecification};
+use cli::{Command, UserNewClusterSpecification};
 use deployment::crd::{CustomImage, H2OSpec, Resources};
 
-use crate::cli::ExistingDeploymentSpecification;
+use crate::cli::UserExistingClusterSpecification;
 
 mod cli;
 
+/// Entrypoint to H2O Kubernetes CLI binary. Created to aid deployment of H2O Open Source Machine Learning
+/// platform to Kubernetes. For users, the number one choice should always be the H2O operator, as
+/// a custom controller running inside the Kubernetes cluster is more powerful than any client-based
+/// application. One of the functions of this CLI is the ability to deploy the operator into the Kubernetes cluster.
+///
+/// When the H2O operator can not be used for any reasons, including permissions or cluster limitations,
+/// this CLI is able to create H2O clusters in Kubernetes as well, using mostly the same resources an operator would do,
+/// without the additional benefit of overseeing the cluster the operator provides.
+///
+/// # Asynchronous execution
+///
+/// Nearly every Kubernetes operation (API request) is fulfilled asynchronously. This naturally translates
+/// to its client libraries, including the [Kube crate](https://github.com/clux/kube-rs), which leverages
+/// the Rust's [async](https://rust-lang.github.io/async-book/) capabilities. Naturally, the resource management
+/// done by this CLI can be mostly done in an asynchronous way, preferably in parallel. Therefore, asynchronous
+/// functions are at the very core of this CLI.
+///
+/// In Rust, the asynchronous code is runtime-agnostic, this means the user might pick any runtime available.
+/// As the `kube` crate already uses a commonly used crate named [Tokio](https://tokio.rs/), the choice
+/// is to Tokio as well. It's multi-threaded executor is chosen for maximum performance and parallelism, even though
+/// not really needed at the moment. This is marked by choosing the `rt-threaded` feature in this crate's `Cargo.tml`.
 #[tokio::main]
 async fn main() {
     let command: Command = match cli::get_command() {
@@ -21,10 +42,10 @@ async fn main() {
         }
     };
     match command {
-        Command::Deployment(new_deployment) => {
+        Command::CreateCluster(new_deployment) => {
             create_new_deployment(new_deployment).await;
         }
-        Command::Undeploy(existing_deployment_spec) => {
+        Command::DeleteCluster(existing_deployment_spec) => {
             delete_existing_deployment(existing_deployment_spec).await;
         }
         Command::Ingress(existing_deployment_spec) => {
@@ -39,7 +60,7 @@ async fn main() {
 /// # Arguments
 ///
 /// `user_spec` - Specification of the deployment parameters -
-async fn create_new_deployment(user_spec: NewDeploymentSpecification) {
+async fn create_new_deployment(user_spec: UserNewClusterSpecification) {
     let (client, namespace): (Client, String) = match user_spec.kubeconfig_path {
         None => deployment::client::try_default().await.unwrap(),
         Some(kubeconfig_path) => deployment::client::from_kubeconfig(kubeconfig_path.as_path()).await,
@@ -90,7 +111,7 @@ async fn create_new_deployment(user_spec: NewDeploymentSpecification) {
 ///
 /// # Arguments
 /// `specification` - A descriptor of an existing deployment to delete.
-async fn delete_existing_deployment(specification: ExistingDeploymentSpecification) {
+async fn delete_existing_deployment(specification: UserExistingClusterSpecification) {
     let (client, namespace): (Client, String) = match specification.kubeconfig_path {
         None => deployment::client::try_default().await.unwrap(),
         Some(kubeconfig_path) => deployment::client::from_kubeconfig(kubeconfig_path.as_path()).await,
@@ -122,7 +143,7 @@ async fn delete_existing_deployment(specification: ExistingDeploymentSpecificati
 ///
 /// # Arguments
 /// `specification` - A descriptor of an existing deployment to point ingress to.
-async fn add_ingress(specification: ExistingDeploymentSpecification) {
+async fn add_ingress(specification: UserExistingClusterSpecification) {
     let (client, namespace): (Client, String) = match specification.kubeconfig_path {
         None => deployment::client::try_default().await.unwrap(),
         Some(kubeconfig_path) => deployment::client::from_kubeconfig(kubeconfig_path.as_path()).await,
