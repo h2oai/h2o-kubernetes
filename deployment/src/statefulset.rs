@@ -3,7 +3,7 @@ use kube::{Api, Client};
 use kube::api::{DeleteParams, PostParams, PropagationPolicy};
 use log::debug;
 
-use crate::crd::{CustomImage, H2OSpec};
+use crate::crd::H2OSpec;
 use crate::Error;
 
 const STATEFUL_SET_TEMPLATE: &str = r#"
@@ -85,7 +85,8 @@ spec:
 /// 3,
 /// "32Gi",
 /// 8
-/// );
+/// )
+/// .expect("Could not create StatefulSet from YAML template");
 /// ```
 pub fn h2o_stateful_set(
     name: &str,
@@ -95,7 +96,7 @@ pub fn h2o_stateful_set(
     nodes: u32,
     memory: &str,
     num_cpu: u32,
-) -> StatefulSet {
+) -> Result<StatefulSet, Error> {
     let mut command_line: String = "          command: <command>".to_string(); // with proper indentation
     match command {
         None => command_line = "".to_string(),
@@ -115,8 +116,9 @@ pub fn h2o_stateful_set(
 
     debug!("Stateful set result:\n{}", stateful_set_definition);
 
-    let stateful_set: StatefulSet = serde_yaml::from_str(&stateful_set_definition).unwrap();
-    return stateful_set;
+    let stateful_set: StatefulSet = serde_yaml::from_str(&stateful_set_definition)
+        .map_err(Error::from_serde_yaml_error)?;
+    return Ok(stateful_set);
 }
 
 /// Invokes asynchronous creation of `StatefulSet` of H2O pods in a Kubernetes cluster according to the specification.
@@ -140,8 +142,7 @@ pub async fn create(
 
 
     // Custom image overrides H2O version in case both is specified
-    if specification.custom_image.is_some() {
-        let image: &CustomImage = specification.custom_image.as_ref().unwrap();
+    if let Some(image) = specification.custom_image.as_ref() {
         docker_image = &image.image;
         // The user optionally sets a custom entrypoint to be used for the custom image. If no
         match &image.command {
@@ -173,7 +174,7 @@ pub async fn create(
         specification.nodes,
         &specification.resources.memory,
         specification.resources.cpu,
-    );
+    )?;
 
     return statefulset_api
         .create(&PostParams::default(), &stateful_set)

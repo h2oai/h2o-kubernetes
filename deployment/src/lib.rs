@@ -5,6 +5,8 @@ extern crate thiserror;
 
 use kube::Client;
 use kube::Error as KubeError;
+use serde_yaml::Error as YamlError;
+use serde_json::Error as JsonError;
 use thiserror::Error as ThisError;
 
 use crate::crd::H2OSpec;
@@ -28,6 +30,8 @@ pub enum Error {
     /// Requested operation timed out
     #[error("Operation timed out. Reason: {0}")]
     Timeout(String),
+    #[error("Failed to serialize template. Reason: {0}")]
+    TemplateSerializationError(String),
 }
 
 impl Error {
@@ -35,6 +39,14 @@ impl Error {
     /// the `kube` crate bundled inside.
     fn from_kube_error(error: KubeError) -> Error {
         Error::KubeError(error)
+    }
+
+    fn from_serde_yaml_error(error: YamlError) -> Error {
+        Error::TemplateSerializationError(error.to_string())
+    }
+
+    fn from_serde_json_error(error: JsonError) -> Error {
+        Error::TemplateSerializationError(error.to_string())
     }
 }
 

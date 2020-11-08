@@ -41,7 +41,8 @@ pub async fn add_finalizer(client: Client, namespace: &str, name: &str) -> Resul
         field_manager: None,
     };
     return h2o_api
-        .patch(name, &patch_params, serde_json::to_vec(&finalizer).unwrap())
+        .patch(name, &patch_params, serde_json::to_vec(&finalizer)
+            .map_err(Error::from_serde_json_error)?)
         .await
         .map_err(Error::from_kube_error);
 }
@@ -70,7 +71,8 @@ pub async fn remove_finalizer(client: Client, name: &str, namespace: &str) -> Re
     };
 
     return h2o_api
-        .patch(name, &patch_params, serde_json::to_vec(&finalizer).unwrap())
+        .patch(name, &patch_params, serde_json::to_vec(&finalizer)
+            .map_err(Error::from_serde_json_error)?)
         .await
         .map_err(Error::from_kube_error);
 }

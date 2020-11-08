@@ -6,9 +6,9 @@ use kube::api::{ListParams, Meta};
 use kube_runtime::controller::{Context, ReconcilerAction};
 use kube_runtime::Controller;
 use log::{error, info};
-use deployment::Error;
 
 use deployment::crd::H2O;
+use deployment::Error;
 
 /// Creates and runs an instance of `kube_runtime::Controller` internally, endlessly waiting for incoming events
 /// on CRDs handled by this operator. Unless there is an error, this function never returns.
@@ -176,7 +176,8 @@ async fn create_h2o_deployment(
     context: &Context<ContextData>,
 ) -> Result<ReconcilerAction, Error> {
     let data: &ContextData = context.get_ref();
-    let name: String = h2o.metadata.name.clone().unwrap();
+    let name: String = h2o.metadata.name.clone()
+        .ok_or(Error::UserError("Unable to create H2O deployment. No H2O name provided.".to_string()))?;
 
     let deploy_future =
         deployment::create_h2o_cluster(data.client.clone(), &h2o.spec, &data.default_namespace, &name);
@@ -209,8 +210,10 @@ async fn delete_h2o_deployment(
     context: &Context<ContextData>,
 ) -> Result<ReconcilerAction, Error> {
     let data: &ContextData = context.get_ref();
-    let name: &str = h2o.metadata.name.as_ref().unwrap();
-    let namespace: &str = h2o.meta().namespace.as_ref().unwrap();
+    let name: &str = h2o.metadata.name.as_ref()
+        .ok_or(Error::UserError("Unable to delete H2O deployment. No H2O name provided.".to_string()))?;
+    let namespace: &str = h2o.meta().namespace.as_ref()
+        .ok_or(Error::UserError("Unable to delete H2O deployment. No namespace provided.".to_string()))?;
 
     let statefulset_future = deployment::statefulset::delete(data.client.clone(), namespace, name);
     let service_future = deployment::headless_service::delete(data.client.clone(), namespace, name);

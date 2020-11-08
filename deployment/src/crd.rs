@@ -167,7 +167,8 @@ const RESOURCE_NAME: &str = "h2os.h2o.ai";
 /// `client` - A client to create the CRD with. Must have sufficient permissions.
 pub async fn create(client: Client) -> Result<(), Error> {
     let api: Api<CustomResourceDefinition> = Api::all(client);
-    let h2o_crd: CustomResourceDefinition = serde_yaml::from_str(H2O_RESOURCE_TEMPLATE).unwrap();
+    let h2o_crd: CustomResourceDefinition = serde_yaml::from_str(H2O_RESOURCE_TEMPLATE)
+        .map_err(Error::from_serde_yaml_error)?;
     api.create(&PostParams::default(), &h2o_crd).await
         .map_err(Error::from_kube_error)?;
     return Result::Ok(());

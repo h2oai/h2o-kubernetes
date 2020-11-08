@@ -29,13 +29,14 @@ spec:
 /// # Arguments
 /// `name` - Name of the H2O deployment. Also used to label the the ingress.
 /// `namespace` - Namespace the ingress will be created in.
-fn h2o_ingress(name: &str, namespace: &str) -> Ingress {
+fn h2o_ingress(name: &str, namespace: &str) -> Result<Ingress, Error> {
     let ingress_definition = INGRESS_TEMPLATE
         .replace("<name>", name)
         .replace("<namespace>", namespace);
 
-    let ingress: Ingress = serde_yaml::from_str(&ingress_definition).unwrap();
-    return ingress;
+    let ingress: Ingress = serde_yaml::from_str(&ingress_definition)
+        .map_err(Error::from_serde_yaml_error)?;
+    return Ok(ingress);
 }
 
 /// Invokes asynchronous creation of an `Ingress`.
@@ -60,7 +61,7 @@ fn h2o_ingress(name: &str, namespace: &str) -> Ingress {
 /// ```
 pub async fn create(client: Client, namespace: &str, name: &str) -> Result<Ingress, Error> {
     let api: Api<Ingress> = Api::namespaced(client, namespace);
-    let ingress_template: Ingress = h2o_ingress(name, namespace);
+    let ingress_template: Ingress = h2o_ingress(name, namespace)?;
 
     return api.create(&PostParams::default(), &ingress_template).await
         .map_err(Error::from_kube_error);

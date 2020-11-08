@@ -37,15 +37,17 @@ spec:
 /// let service: Service = deployment::headless_service::h2o_service(
 /// "any-name",
 /// "default"
-/// );
+/// )
+/// .expect("Could not create service from YAML template.");
 /// ```
-pub fn h2o_service(name: &str, namespace: &str) -> Service {
+pub fn h2o_service(name: &str, namespace: &str) -> Result<Service, Error> {
     let service_definition: String = SERVICE_TEMPLATE
         .replace("<name>", name)
         .replace("<namespace>", namespace);
 
-    let service: Service = serde_yaml::from_str(&service_definition).unwrap();
-    return service;
+    let service: Service = serde_yaml::from_str(&service_definition)
+        .map_err(Error::from_serde_yaml_error)?;
+    return Ok(service);
 }
 
 /// Invokes asynchronous creation of a headless `Service`.
@@ -68,7 +70,7 @@ pub fn h2o_service(name: &str, namespace: &str) -> Service {
 /// ```
 pub async fn create(client: Client, namespace: &str, name: &str) -> Result<Service, Error> {
     let service_api: Api<Service> = Api::namespaced(client.clone(), namespace);
-    let service: Service = h2o_service(name, namespace);
+    let service: Service = h2o_service(name, namespace)?;
     return service_api.create(&PostParams::default(), &service).await
         .map_err(Error::from_kube_error);
 }
