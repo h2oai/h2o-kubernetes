@@ -4,10 +4,11 @@ use std::time::Duration;
 
 use futures::{StreamExt, TryStreamExt};
 use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
-use kube::{Api, api::ListParams, Client, CustomResource, Error};
+use kube::{Api, api::ListParams, Client, CustomResource};
 use kube::api::{DeleteParams, PostParams, WatchEvent};
 use serde::{Deserialize, Serialize};
 
+use crate::Error;
 use crate::finalizer;
 
 /// Specification of an H2O cluster in a Kubernetes cluster.
@@ -167,7 +168,8 @@ const RESOURCE_NAME: &str = "h2os.h2o.ai";
 pub async fn create(client: Client) -> Result<(), Error> {
     let api: Api<CustomResourceDefinition> = Api::all(client);
     let h2o_crd: CustomResourceDefinition = serde_yaml::from_str(H2O_RESOURCE_TEMPLATE).unwrap();
-    api.create(&PostParams::default(), &h2o_crd).await?;
+    api.create(&PostParams::default(), &h2o_crd).await
+        .map_err(Error::from_kube_error)?;
     return Result::Ok(());
 }
 
@@ -179,7 +181,8 @@ pub async fn create(client: Client) -> Result<(), Error> {
 /// `client` - A client to delete the CRD with. Must have sufficient permissions.
 pub async fn delete(client: Client) -> Result<(), Error> {
     let api: Api<CustomResourceDefinition> = Api::all(client);
-    let result = api.delete("h2os.h2o.ai", &DeleteParams::default()).await;
+    let result = api.delete("h2os.h2o.ai", &DeleteParams::default()).await
+        .map_err(Error::from_kube_error);
 
     return match result {
         Ok(_) => Ok(()),
@@ -198,7 +201,7 @@ pub async fn exists(client: Client) -> bool {
 
 /// Waits for CRD to be in a ready state in a Kubernetes cluster.
 ///
-/// This function returns/completes successfuly if:
+/// This function returns/completes successfully if:
 /// 1. The CRD is deployed successfully.
 /// 2. Timeout
 /// 3. Error
@@ -211,9 +214,11 @@ pub async fn wait_crd_ready(client: Client, timeout: Duration) -> Result<(), Err
     let lp = ListParams::default()
         .fields(&format!("metadata.name={}", RESOURCE_NAME))
         .timeout(timeout.as_secs() as u32);
-    let mut stream = api.watch(&lp, "0").await?.boxed();
+    let mut stream = api.watch(&lp, "0").await
+        .map_err(Error::from_kube_error)?.boxed();
 
-    while let Some(status) = stream.try_next().await? {
+    while let Some(status) = stream.try_next().await
+        .map_err(Error::from_kube_error)? {
         if let WatchEvent::Modified(s) = status {
             if let Some(s) = s.status {
                 if let Some(conds) = s.conditions {
@@ -226,8 +231,7 @@ pub async fn wait_crd_ready(client: Client, timeout: Duration) -> Result<(), Err
             }
         }
     }
-    // TODO: Return proper error (use anyhow ?)
-    return Result::Err(Error::DynamicResource("".to_string()));
+    return Result::Err(Error::Timeout(format!("H2O Custom Resource not in ready state after {} seconds.", timeout.as_secs())));
 }
 
 /// Scans `H2O` resources and returns `true` if there is a deletion timestamp present in the resource's

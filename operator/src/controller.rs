@@ -1,11 +1,12 @@
 use std::time::Duration;
 
 use futures::StreamExt;
-use kube::{Api, Client, Error};
+use kube::{Api, Client};
 use kube::api::{ListParams, Meta};
 use kube_runtime::controller::{Context, ReconcilerAction};
 use kube_runtime::Controller;
 use log::{error, info};
+use deployment::Error;
 
 use deployment::crd::H2O;
 

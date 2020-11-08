@@ -63,7 +63,8 @@ async fn main() {
 async fn create_new_deployment(user_spec: UserNewClusterSpecification) {
     let (client, namespace): (Client, String) = match user_spec.kubeconfig_path {
         None => deployment::client::try_default().await.unwrap(),
-        Some(kubeconfig_path) => deployment::client::from_kubeconfig(kubeconfig_path.as_path()).await,
+        Some(kubeconfig_path) => deployment::client::from_kubeconfig(kubeconfig_path.as_path()).await
+            .unwrap(),
     };
 
     let resources: Resources = Resources::new(
@@ -114,7 +115,8 @@ async fn create_new_deployment(user_spec: UserNewClusterSpecification) {
 async fn delete_existing_deployment(specification: UserExistingClusterSpecification) {
     let (client, namespace): (Client, String) = match specification.kubeconfig_path {
         None => deployment::client::try_default().await.unwrap(),
-        Some(kubeconfig_path) => deployment::client::from_kubeconfig(kubeconfig_path.as_path()).await,
+        Some(kubeconfig_path) => deployment::client::from_kubeconfig(kubeconfig_path.as_path()).await
+            .unwrap(),
     };
 
     match deployment::delete_h2o_cluster(
@@ -146,7 +148,8 @@ async fn delete_existing_deployment(specification: UserExistingClusterSpecificat
 async fn add_ingress(specification: UserExistingClusterSpecification) {
     let (client, namespace): (Client, String) = match specification.kubeconfig_path {
         None => deployment::client::try_default().await.unwrap(),
-        Some(kubeconfig_path) => deployment::client::from_kubeconfig(kubeconfig_path.as_path()).await,
+        Some(kubeconfig_path) => deployment::client::from_kubeconfig(kubeconfig_path.as_path()).await
+            .unwrap(),
     };
 
     match deployment::ingress::create(

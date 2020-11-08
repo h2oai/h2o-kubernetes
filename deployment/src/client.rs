@@ -1,7 +1,9 @@
 use std::path::Path;
 
-use kube::{Client, Config, Error};
+use kube::{Client, Config};
 use kube::config::{Kubeconfig, KubeConfigOptions};
+
+use crate::Error;
 
 /// Constructs a client from a kubeconfig to be found under the specified `kubeconfig` path.
 /// Returns default namespace as a second value in the tuple.
@@ -21,17 +23,19 @@ use kube::config::{Kubeconfig, KubeConfigOptions};
 /// use std::path::Path;
 /// use kube::Client;
 /// let path = Path::new("/etc/rancher/k3s/k3s.yaml");
-/// let (client, namespace): (Client, String) = deployment::client::from_kubeconfig(&path).await;
+/// let (client, namespace): (Client, String) = deployment::client::from_kubeconfig(&path).await
+/// .expect("Client could not be created from Kubeconfig.");
 /// }
 /// ```
-pub async fn from_kubeconfig(kubeconfig_path: &Path) -> (Client, String) {
-    let kubeconfig: Kubeconfig = Kubeconfig::read_from(kubeconfig_path).unwrap();
+pub async fn from_kubeconfig(kubeconfig_path: &Path) -> Result<(Client, String), Error> {
+    let kubeconfig: Kubeconfig = Kubeconfig::read_from(kubeconfig_path)
+        .map_err(Error::from_kube_error)?;
     let config: Config = Config::from_custom_kubeconfig(kubeconfig, &KubeConfigOptions::default())
         .await
-        .unwrap();
+        .map_err(Error::from_kube_error)?;
     let kubeconfig_namespace: String = config.default_ns.clone();
     let client: Client = Client::new(config);
-    return (client, kubeconfig_namespace);
+    return Result::Ok((client, kubeconfig_namespace));
 }
 
 /// Attempts to construct a `kube::Client` by searching for the `KUBECONFIG` environment variable and possibly
@@ -43,11 +47,13 @@ pub async fn from_kubeconfig(kubeconfig_path: &Path) -> (Client, String) {
 /// #[tokio::main]
 /// async fn main() {
 /// use kube::Client;
-/// let (client, namespace): (Client, String) = deployment::client::try_default().await.unwrap();
+/// let (client, namespace): (Client, String) = deployment::client::try_default().await
+/// .expect("Could not construct client.");
 /// }
 /// ```
 pub async fn try_default() -> Result<(Client, String), Error> {
-    let config = Config::infer().await?;
+    let config = Config::infer().await
+        .map_err(Error::from_kube_error)?;
     let kubeconfig_namespace: String = config.default_ns.clone();
     let client = Client::new(config);
     return Result::Ok((client, kubeconfig_namespace));

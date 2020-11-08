@@ -1,6 +1,8 @@
 use k8s_openapi::api::networking::v1beta1::Ingress;
-use kube::{Api, Client, Error};
+use kube::{Api, Client};
 use kube::api::{DeleteParams, PostParams};
+
+use crate::Error;
 
 const INGRESS_TEMPLATE: &str = r#"
 apiVersion: networking.k8s.io/v1beta1
@@ -60,7 +62,8 @@ pub async fn create(client: Client, namespace: &str, name: &str) -> Result<Ingre
     let api: Api<Ingress> = Api::namespaced(client, namespace);
     let ingress_template: Ingress = h2o_ingress(name, namespace);
 
-    return api.create(&PostParams::default(), &ingress_template).await;
+    return api.create(&PostParams::default(), &ingress_template).await
+        .map_err(Error::from_kube_error);
 }
 
 /// Invokes asynchronous deletion of an `Ingress` from a Kubernetes cluster.
@@ -84,7 +87,8 @@ pub async fn create(client: Client, namespace: &str, name: &str) -> Result<Ingre
 /// ```
 pub async fn delete(client: Client, namespace: &str, name: &str) -> Result<(), Error> {
     let api: Api<Ingress> = Api::namespaced(client, namespace);
-    let result = api.delete(name, &DeleteParams::default()).await;
+    let result = api.delete(name, &DeleteParams::default()).await
+        .map_err(Error::from_kube_error);
 
     return match result {
         Ok(_) => Ok(()),

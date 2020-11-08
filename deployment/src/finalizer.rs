@@ -1,8 +1,9 @@
-use kube::{Api, Client, Error};
+use kube::{Api, Client};
 use kube::api::{PatchParams, PatchStrategy};
 use serde_json::json;
 
 use crate::crd::H2O;
+use crate::Error;
 
 pub const FINALIZER_NAME: &str = "h2o3.h2o.ai";
 
@@ -41,7 +42,8 @@ pub async fn add_finalizer(client: Client, namespace: &str, name: &str) -> Resul
     };
     return h2o_api
         .patch(name, &patch_params, serde_json::to_vec(&finalizer).unwrap())
-        .await;
+        .await
+        .map_err(Error::from_kube_error);
 }
 
 /// Removes a finalizer from metadata of an H2O resource of given `name`.
@@ -69,5 +71,6 @@ pub async fn remove_finalizer(client: Client, name: &str, namespace: &str) -> Re
 
     return h2o_api
         .patch(name, &patch_params, serde_json::to_vec(&finalizer).unwrap())
-        .await;
+        .await
+        .map_err(Error::from_kube_error);
 }

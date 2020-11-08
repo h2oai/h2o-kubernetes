@@ -1,6 +1,8 @@
 use k8s_openapi::api::core::v1::Service;
-use kube::{Api, Client, Error};
+use kube::{Api, Client};
 use kube::api::{DeleteParams, PostParams};
+
+use crate::Error;
 
 const SERVICE_TEMPLATE: &str = r#"
 apiVersion: v1
@@ -67,7 +69,8 @@ pub fn h2o_service(name: &str, namespace: &str) -> Service {
 pub async fn create(client: Client, namespace: &str, name: &str) -> Result<Service, Error> {
     let service_api: Api<Service> = Api::namespaced(client.clone(), namespace);
     let service: Service = h2o_service(name, namespace);
-    return service_api.create(&PostParams::default(), &service).await;
+    return service_api.create(&PostParams::default(), &service).await
+        .map_err(Error::from_kube_error);
 }
 
 /// Invokes asynchronous deletion of a `StatefulSet` of H2O pods from a Kubernetes cluster.
@@ -91,7 +94,8 @@ pub async fn create(client: Client, namespace: &str, name: &str) -> Result<Servi
 /// ```
 pub async fn delete(client: Client, namespace: &str, name: &str) -> Result<(), Error> {
     let statefulset_api: Api<Service> = Api::namespaced(client.clone(), namespace);
-    let result = statefulset_api.delete(name, &DeleteParams::default()).await;
+    let result = statefulset_api.delete(name, &DeleteParams::default()).await
+        .map_err(Error::from_kube_error);
 
     return match result {
         Ok(_) => {

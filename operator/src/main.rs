@@ -6,9 +6,10 @@ extern crate tokio;
 
 use std::time::Duration;
 
-use kube::{Client, Error};
+use kube::{Client};
 use log::{error, info, LevelFilter};
 use simple_logger::SimpleLogger;
+use deployment::Error;
 
 use deployment::crd;
 
@@ -96,6 +97,10 @@ fn initialize_logging() {
 ///
 /// let client = Client::try_default();
 /// ensure_crd_created(client).await;
+///
+/// # Panics
+///
+/// If `H2O` CRD is not detected and creation fails, the operator would be running in vain.
 /// ```
 async fn ensure_crd_created(client: Client) {
     if crd::exists(client.clone()).await {

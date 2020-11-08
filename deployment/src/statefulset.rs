@@ -1,9 +1,10 @@
 use k8s_openapi::api::apps::v1::StatefulSet;
-use kube::{Api, Client, Error};
+use kube::{Api, Client};
 use kube::api::{DeleteParams, PostParams, PropagationPolicy};
 use log::debug;
 
 use crate::crd::{CustomImage, H2OSpec};
+use crate::Error;
 
 const STATEFUL_SET_TEMPLATE: &str = r#"
 apiVersion: apps/v1
@@ -160,7 +161,8 @@ pub async fn create(
     } else {
         // At least one of the above has to be specified - H2O version that serves as a Docker image tag,
         // or a full definition of custom image.
-        return Result::Err(Error::InvalidMethod("".to_string())); // TODO: Proper error
+        return Err(Error::UserError("Unable to create H2O statefulset. Either H2O version or a complete custom image specification must be provided. None obtained."
+            .to_string()));
     }
 
     let stateful_set: StatefulSet = h2o_stateful_set(
@@ -175,7 +177,8 @@ pub async fn create(
 
     return statefulset_api
         .create(&PostParams::default(), &stateful_set)
-        .await;
+        .await
+        .map_err(Error::from_kube_error);
 }
 
 /// Invokes asynchronous deletion of a `StatefulSet` of H2O pods from a Kubernetes cluster.
@@ -206,7 +209,8 @@ pub async fn delete(client: Client, namespace: &str, name: &str) -> Result<(), E
         preconditions: None,
     };
 
-    return match statefulset_api.delete(name, &delete_params).await {
+    return match statefulset_api.delete(name, &delete_params).await
+        .map_err(Error::from_kube_error) {
         Ok(_) => Ok(()),
         Err(error) => Err(error),
     };

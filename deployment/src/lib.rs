@@ -1,9 +1,11 @@
 extern crate futures;
 extern crate kube;
 extern crate log;
+extern crate thiserror;
 
 use kube::Client;
-use kube::Error;
+use kube::Error as KubeError;
+use thiserror::Error as ThisError;
 
 use crate::crd::H2OSpec;
 
@@ -14,6 +16,27 @@ pub mod headless_service;
 pub mod statefulset;
 pub mod client;
 
+/// Error during handling Kubernetes cluster-related requests.
+#[derive(ThisError, Debug)]
+pub enum Error {
+    /// Error originating from the Kubernetes API and/or the `kube` crate
+    #[error("Kubernetes reported error: {0}")]
+    KubeError(KubeError),
+    /// Error in user-provided data/configuration
+    #[error("Kubernetes reported error: {0}")]
+    UserError(String),
+    /// Requested operation timed out
+    #[error("Operation timed out. Reason: {0}")]
+    Timeout(String),
+}
+
+impl Error {
+    /// Constructs a new `deployment::Error::KubeError` with the original error originating from
+    /// the `kube` crate bundled inside.
+    fn from_kube_error(error: KubeError) -> Error {
+        Error::KubeError(error)
+    }
+}
 
 /// Creates all the resources necessary to start an H2O cluster according to specification.
 /// Only the resources necessary for the H2O cluster to be up and running are created (exhaustive list):
@@ -125,7 +148,8 @@ mod tests {
     #[tokio::test]
     async fn test_from_kubeconfig() {
         let kubeconfig_location: PathBuf = kubeconfig_location_panic();
-        super::client::from_kubeconfig(kubeconfig_location.as_path()).await;
+        super::client::from_kubeconfig(kubeconfig_location.as_path()).await
+            .unwrap();
     }
 
     #[tokio::test]
