@@ -182,7 +182,7 @@ pub async fn create(client: Client) -> Result<(), Error> {
 /// `client` - A client to delete the CRD with. Must have sufficient permissions.
 pub async fn delete(client: Client) -> Result<(), Error> {
     let api: Api<CustomResourceDefinition> = Api::all(client);
-    let result = api.delete("h2os.h2o.ai", &DeleteParams::default()).await
+    let result = api.delete(RESOURCE_NAME, &DeleteParams::default()).await
         .map_err(Error::from_kube_error);
 
     return match result {
@@ -200,13 +200,27 @@ pub async fn exists(client: Client) -> bool {
     return api.get(RESOURCE_NAME).await.is_ok();
 }
 
-/// Waits for CRD to be in a ready state in a Kubernetes cluster.
+
+/// Readiness state of a custom resource definition\
+/// - `Ready` means the CRD is registered and recognized by Kubernetes
+/// - `Unready` means the CRD is not registered or recognized by Kubernetes
+pub enum CRDReadiness {
+    Ready,
+    Unready,
+}
+
+/// Waits for CRD to be in the desired CrdState in a Kubernetes cluster.
 ///
 /// This function returns/completes successfully if:
 /// 1. The CRD is deployed successfully.
 /// 2. Timeout
 /// 3. Error
-pub async fn wait_crd_ready(client: Client, timeout: Duration) -> Result<(), Error> {
+///
+/// # Arguments
+/// `client` - Client to use for watching the CRD
+/// `timeout` - Maximum amount of time to wait before returning `Result::Error`
+/// `state` - Desired `CRDReadiness` state to wait for.
+pub async fn wait_crd_status(client: Client, timeout: Duration, state: CRDReadiness) -> Result<(), Error> {
     if exists(client.clone()).await {
         return Ok(());
     }
@@ -224,7 +238,16 @@ pub async fn wait_crd_ready(client: Client, timeout: Duration) -> Result<(), Err
             if let Some(s) = s.status {
                 if let Some(conds) = s.conditions {
                     if let Some(pcond) = conds.iter().find(|c| c.type_ == "NamesAccepted") {
-                        if pcond.status == "True" {
+                        let desired_crd_status = match state {
+                            CRDReadiness::Ready => {
+                                pcond.status == "True"
+                            }
+                            CRDReadiness::Unready => {
+                                pcond.status == "False"
+                            }
+                        };
+
+                        if desired_crd_status {
                             return Ok(());
                         }
                     }
@@ -263,4 +286,44 @@ pub fn has_h2o3_finalizer(h2o: &H2O) -> bool {
         }
         None => false,
     };
+}
+
+#[cfg(test)]
+mod tests {
+    extern crate tests_common;
+
+    use kube::{Api, Client};
+    use kube::api::{DeleteParams, PostParams};
+    use tokio::time::Duration;
+
+    use tests_common::kubeconfig_location_panic;
+
+    use crate::crd::{CRDReadiness, H2O, H2OSpec, Resources};
+
+    /// Tests deployment and undeployment of custom CRD into Kubernetes - there will be no underlying
+    /// resources created, as an operator is not guaranteed to be running during the execution of this test.
+    #[tokio::test]
+    async fn test_deploy() {
+        let kubeconfig_location = kubeconfig_location_panic();
+        let (client, default_namespace): (Client, String) = crate::client::from_kubeconfig(kubeconfig_location.as_path())
+            .await
+            .unwrap();
+        if super::exists(client.clone()).await {
+            super::delete(client.clone()).await.unwrap();
+            super::wait_crd_status(client.clone(), Duration::from_secs(30), CRDReadiness::Unready).await.unwrap();
+        }
+        super::create(client.clone()).await.unwrap();
+        super::wait_crd_status(client.clone(), Duration::from_secs(30), CRDReadiness::Ready).await.unwrap();
+        assert!(super::exists(client.clone()).await);
+
+        let resources: Resources = Resources::new(1, "256Mi".to_string(), Option::None);
+        let h2o_spec: H2OSpec = H2OSpec::new(2, Option::Some("latest".to_string()), resources, Option::None);
+        let h2o: H2O = H2O::new("crd-test-deploy", h2o_spec);
+
+        let api: Api<H2O> = Api::namespaced(client.clone(), &default_namespace);
+        api.create(&PostParams::default(), &h2o).await.unwrap();
+        api.delete("crd-test-deploy", &DeleteParams::default()).await.unwrap();
+
+        super::delete(client.clone()).await.unwrap();
+    }
 }

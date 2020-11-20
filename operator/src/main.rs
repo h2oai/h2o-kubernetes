@@ -12,6 +12,7 @@ use simple_logger::SimpleLogger;
 use deployment::Error;
 
 use deployment::crd;
+use deployment::crd::CRDReadiness;
 
 mod controller;
 
@@ -111,7 +112,7 @@ async fn ensure_crd_created(client: Client) {
         );
         deployment::crd::create(client.clone()).await.unwrap();
         let timeout: Duration = Duration::from_secs(30);
-        let result = deployment::crd::wait_crd_ready(client.clone(), timeout).await;
+        let result = deployment::crd::wait_crd_status(client.clone(), timeout, CRDReadiness::Ready).await;
         match result {
             Ok(_) => {
                 info!("Successfully deployed H2O CustomResourceDefinition into the cluster.");
