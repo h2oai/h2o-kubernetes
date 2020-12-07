@@ -33,20 +33,21 @@ pub enum Error {
     #[error("Failed to serialize template. Reason: {0}")]
     TemplateSerializationError(String),
 }
-
-impl Error {
-    /// Constructs a new `deployment::Error::KubeError` with the original error originating from
-    /// the `kube` crate bundled inside.
-    fn from_kube_error(error: KubeError) -> Error {
-        Error::KubeError(error)
+impl From<KubeError> for Error{
+    fn from(kube_error: KubeError) -> Self {
+        Error::KubeError(kube_error)
     }
+}
 
-    fn from_serde_yaml_error(error: YamlError) -> Error {
-        Error::TemplateSerializationError(error.to_string())
+impl From<YamlError> for Error{
+    fn from(yaml_error : YamlError) -> Self {
+        Error::TemplateSerializationError(yaml_error.to_string())
     }
+}
 
-    fn from_serde_json_error(error: JsonError) -> Error {
-        Error::TemplateSerializationError(error.to_string())
+impl From<JsonError> for Error{
+    fn from(json_error: JsonError) -> Self {
+        Error::TemplateSerializationError(json_error.to_string())
     }
 }
 

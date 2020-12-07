@@ -28,11 +28,9 @@ use crate::Error;
 /// }
 /// ```
 pub async fn from_kubeconfig(kubeconfig_path: &Path) -> Result<(Client, String), Error> {
-    let kubeconfig: Kubeconfig = Kubeconfig::read_from(kubeconfig_path)
-        .map_err(Error::from_kube_error)?;
+    let kubeconfig: Kubeconfig = Kubeconfig::read_from(kubeconfig_path)?;
     let config: Config = Config::from_custom_kubeconfig(kubeconfig, &KubeConfigOptions::default())
-        .await
-        .map_err(Error::from_kube_error)?;
+        .await?;
     let kubeconfig_namespace: String = config.default_ns.clone();
     let client: Client = Client::new(config);
     return Result::Ok((client, kubeconfig_namespace));
@@ -52,8 +50,7 @@ pub async fn from_kubeconfig(kubeconfig_path: &Path) -> Result<(Client, String),
 /// }
 /// ```
 pub async fn try_default() -> Result<(Client, String), Error> {
-    let config = Config::infer().await
-        .map_err(Error::from_kube_error)?;
+    let config = Config::infer().await?;
     let kubeconfig_namespace: String = config.default_ns.clone();
     let client = Client::new(config);
     return Result::Ok((client, kubeconfig_namespace));

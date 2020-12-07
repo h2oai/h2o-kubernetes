@@ -348,10 +348,7 @@ fn validate_int_greater_than_zero(input: String) -> Result<(), String> {
 fn validate_percentage(input: String) -> Result<(), String> {
     let number: i64 = input.parse::<i64>().unwrap();
     return if number < 0 || number > 100 {
-        Result::Err(format!(
-            "Error: The number must be withing range <{},{}>.",
-            0, 100
-        ))
+        Result::Err("Error: The number must be withing range <0,100>.".to_string())
     } else {
         Result::Ok(())
     };

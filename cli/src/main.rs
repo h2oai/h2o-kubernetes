@@ -2,10 +2,12 @@ extern crate clap;
 extern crate deployment;
 extern crate tokio;
 
+use k8s_openapi::api::networking::v1beta1::Ingress;
 use kube::Client;
 
 use cli::{Command, UserNewClusterSpecification};
 use deployment::crd::{CustomImage, H2OSpec, Resources};
+use deployment::Error;
 
 use crate::cli::UserExistingClusterSpecification;
 
@@ -119,13 +121,14 @@ async fn delete_existing_deployment(specification: UserExistingClusterSpecificat
             .unwrap(),
     };
 
-    match deployment::delete_h2o_cluster(
+    let deletion_result: Result<(), Error> = deployment::delete_h2o_cluster(
         client.clone(),
         &specification.namespace.unwrap_or(namespace),
         &specification.name,
     )
-        .await
-    {
+        .await;
+
+    match deletion_result {
         Ok(_) => {}
         Err(error) => {
             print!(
@@ -152,37 +155,29 @@ async fn add_ingress(specification: UserExistingClusterSpecification) {
             .unwrap(),
     };
 
-    match deployment::ingress::create(
+    let ingress: Ingress = deployment::ingress::create(
         client.clone(),
         &specification.namespace.unwrap_or(namespace),
         &specification.name,
     )
-        .await
-    {
-        Ok(ingress) => {
-            println!("Ingress '{}' deployed successfully.", &specification.name);
-            let ingress_ip: Option<String> = deployment::ingress::any_lb_external_ip(&ingress);
-            let ingress_path: Option<String> = deployment::ingress::any_path(&ingress);
+        .await.expect(&format!(
+        "Unable to create ingress for {} deployment.", specification.name));
 
-            if ingress_ip.is_some() && ingress_path.is_some() {
-                println!("You may now use 'h2o.connect()' to connect to the H2O cluster:");
-                println!(
-                    "Python: 'h2o.connect(url=\"http://{}:80{}\")'",
-                    ingress_ip.as_ref().unwrap(),
-                    ingress_path.as_ref().unwrap()
-                );
-                println!(
-                    "R: 'h2o.connect(ip = \"{}\", context_path = \"{}\", port=80)'",
-                    ingress_ip.as_ref().unwrap(),
-                    ingress_path.unwrap().strip_prefix("/").unwrap()
-                )
-            }
-        }
-        Err(e) => {
-            panic!(
-                "Unable to create ingress for {} deployment. Reason: \n{}",
-                &specification.name, e
-            );
-        }
+    println!("Ingress '{}' deployed successfully.", &specification.name);
+    let ingress_ip: Option<String> = deployment::ingress::any_lb_external_ip(&ingress);
+    let ingress_path: Option<String> = deployment::ingress::any_path(&ingress);
+
+    if ingress_ip.is_some() && ingress_path.is_some() {
+        println!("You may now use 'h2o.connect()' to connect to the H2O cluster:");
+        println!(
+            "Python: 'h2o.connect(url=\"http://{}:80{}\")'",
+            ingress_ip.as_ref().unwrap(),
+            ingress_path.as_ref().unwrap()
+        );
+        println!(
+            "R: 'h2o.connect(ip = \"{}\", context_path = \"{}\", port=80)'",
+            ingress_ip.as_ref().unwrap(),
+            ingress_path.unwrap().strip_prefix("/").unwrap()
+        )
     }
 }

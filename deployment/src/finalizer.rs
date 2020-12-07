@@ -40,11 +40,10 @@ pub async fn add_finalizer(client: Client, namespace: &str, name: &str) -> Resul
         force: false,
         field_manager: None,
     };
-    return h2o_api
-        .patch(name, &patch_params, serde_json::to_vec(&finalizer)
-            .map_err(Error::from_serde_json_error)?)
-        .await
-        .map_err(Error::from_kube_error);
+    let h2o: H2O = h2o_api.patch(name, &patch_params, serde_json::to_vec(&finalizer)?)
+        .await?;
+
+    Ok(h2o)
 }
 
 /// Removes a finalizer from metadata of an H2O resource of given `name`.
@@ -70,9 +69,8 @@ pub async fn remove_finalizer(client: Client, name: &str, namespace: &str) -> Re
         field_manager: None,
     };
 
-    return h2o_api
-        .patch(name, &patch_params, serde_json::to_vec(&finalizer)
-            .map_err(Error::from_serde_json_error)?)
-        .await
-        .map_err(Error::from_kube_error);
+    let h2o_without_finalizer: H2O = h2o_api
+        .patch(name, &patch_params, serde_json::to_vec(&finalizer)?)
+        .await?;
+    Ok(h2o_without_finalizer)
 }

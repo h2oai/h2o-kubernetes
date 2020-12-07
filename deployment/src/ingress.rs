@@ -34,8 +34,7 @@ fn h2o_ingress(name: &str, namespace: &str) -> Result<Ingress, Error> {
         .replace("<name>", name)
         .replace("<namespace>", namespace);
 
-    let ingress: Ingress = serde_yaml::from_str(&ingress_definition)
-        .map_err(Error::from_serde_yaml_error)?;
+    let ingress: Ingress = serde_yaml::from_str(&ingress_definition)?;
     return Ok(ingress);
 }
 
@@ -63,8 +62,8 @@ pub async fn create(client: Client, namespace: &str, name: &str) -> Result<Ingre
     let api: Api<Ingress> = Api::namespaced(client, namespace);
     let ingress_template: Ingress = h2o_ingress(name, namespace)?;
 
-    return api.create(&PostParams::default(), &ingress_template).await
-        .map_err(Error::from_kube_error);
+    let created_ingress: Ingress = api.create(&PostParams::default(), &ingress_template).await?;
+    Ok(created_ingress)
 }
 
 /// Invokes asynchronous deletion of an `Ingress` from a Kubernetes cluster.
@@ -88,13 +87,8 @@ pub async fn create(client: Client, namespace: &str, name: &str) -> Result<Ingre
 /// ```
 pub async fn delete(client: Client, namespace: &str, name: &str) -> Result<(), Error> {
     let api: Api<Ingress> = Api::namespaced(client, namespace);
-    let result = api.delete(name, &DeleteParams::default()).await
-        .map_err(Error::from_kube_error);
-
-    return match result {
-        Ok(_) => Ok(()),
-        Err(error) => Err(error),
-    };
+    api.delete(name, &DeleteParams::default()).await?;
+    Ok(())
 }
 
 /// Returns the first IP assigned to an Ingresses load balancer, if found. Otherwise returns `Option::None`.
@@ -104,12 +98,9 @@ pub async fn delete(client: Client, namespace: &str, name: &str) -> Result<(), E
 /// `ingress` - Ingress to search for IP
 pub fn any_lb_external_ip(ingress: &Ingress) -> Option<String> {
     return ingress
-        .status
-        .as_ref()?
-        .load_balancer
-        .as_ref()?
-        .ingress
-        .as_ref()?
+        .status.as_ref()?
+        .load_balancer.as_ref()?
+        .ingress.as_ref()?
         .last()?
         .ip
         .clone();
@@ -121,15 +112,10 @@ pub fn any_lb_external_ip(ingress: &Ingress) -> Option<String> {
 /// `ingress` - Ingress to search for Path
 pub fn any_path(ingress: &Ingress) -> Option<String> {
     return ingress
-        .spec
+        .spec.as_ref()?
+        .rules.as_ref()?
+        .last()?.http
         .as_ref()?
-        .rules
-        .as_ref()?
-        .last()?
-        .http
-        .as_ref()?
-        .paths
-        .last()?
-        .path
-        .clone();
+        .paths.last()?
+        .path.clone();
 }

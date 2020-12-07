@@ -167,11 +167,9 @@ const RESOURCE_NAME: &str = "h2os.h2o.ai";
 /// `client` - A client to create the CRD with. Must have sufficient permissions.
 pub async fn create(client: Client) -> Result<(), Error> {
     let api: Api<CustomResourceDefinition> = Api::all(client);
-    let h2o_crd: CustomResourceDefinition = serde_yaml::from_str(H2O_RESOURCE_TEMPLATE)
-        .map_err(Error::from_serde_yaml_error)?;
-    api.create(&PostParams::default(), &h2o_crd).await
-        .map_err(Error::from_kube_error)?;
-    return Result::Ok(());
+    let h2o_crd: CustomResourceDefinition = serde_yaml::from_str(H2O_RESOURCE_TEMPLATE)?;
+    api.create(&PostParams::default(), &h2o_crd).await?;
+    Ok(())
 }
 
 /// Deletes `H2O` CRD from a Kubernetes cluster.
@@ -182,13 +180,8 @@ pub async fn create(client: Client) -> Result<(), Error> {
 /// `client` - A client to delete the CRD with. Must have sufficient permissions.
 pub async fn delete(client: Client) -> Result<(), Error> {
     let api: Api<CustomResourceDefinition> = Api::all(client);
-    let result = api.delete(RESOURCE_NAME, &DeleteParams::default()).await
-        .map_err(Error::from_kube_error);
-
-    return match result {
-        Ok(_) => Ok(()),
-        Err(error) => Err(error),
-    };
+    api.delete(RESOURCE_NAME, &DeleteParams::default()).await?;
+    Ok(())
 }
 
 /// Returns true if `H2O` CRD exists in given Kubernetes cluster. Otherwise returns false.
@@ -229,11 +222,9 @@ pub async fn wait_crd_status(client: Client, timeout: Duration, state: CRDReadin
     let lp = ListParams::default()
         .fields(&format!("metadata.name={}", RESOURCE_NAME))
         .timeout(timeout.as_secs() as u32);
-    let mut stream = api.watch(&lp, "0").await
-        .map_err(Error::from_kube_error)?.boxed();
+    let mut stream = api.watch(&lp, "0").await?.boxed();
 
-    while let Some(status) = stream.try_next().await
-        .map_err(Error::from_kube_error)? {
+    while let Some(status) = stream.try_next().await? {
         if let WatchEvent::Modified(s) = status {
             if let Some(s) = s.status {
                 if let Some(conds) = s.conditions {

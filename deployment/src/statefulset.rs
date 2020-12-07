@@ -116,8 +116,7 @@ pub fn h2o_stateful_set(
 
     debug!("Stateful set result:\n{}", stateful_set_definition);
 
-    let stateful_set: StatefulSet = serde_yaml::from_str(&stateful_set_definition)
-        .map_err(Error::from_serde_yaml_error)?;
+    let stateful_set: StatefulSet = serde_yaml::from_str(&stateful_set_definition)?;
     return Ok(stateful_set);
 }
 
@@ -176,10 +175,10 @@ pub async fn create(
         specification.resources.cpu,
     )?;
 
-    return statefulset_api
+    let statefulset : StatefulSet = statefulset_api
         .create(&PostParams::default(), &stateful_set)
-        .await
-        .map_err(Error::from_kube_error);
+        .await?;
+    Ok(statefulset)
 }
 
 /// Invokes asynchronous deletion of a `StatefulSet` of H2O pods from a Kubernetes cluster.
@@ -210,9 +209,6 @@ pub async fn delete(client: Client, namespace: &str, name: &str) -> Result<(), E
         preconditions: None,
     };
 
-    return match statefulset_api.delete(name, &delete_params).await
-        .map_err(Error::from_kube_error) {
-        Ok(_) => Ok(()),
-        Err(error) => Err(error),
-    };
+    statefulset_api.delete(name, &delete_params).await?;
+    Ok(())
 }
