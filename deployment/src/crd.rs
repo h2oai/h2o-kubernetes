@@ -10,11 +10,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::Error;
 use crate::finalizer;
+use std::collections::HashSet;
 
 /// Specification of an H2O cluster in a Kubernetes cluster.
 /// Determines attributes like cluster size, resources (cpu, memory) and pod configuration.
 #[derive(CustomResource, Debug, Clone, Deserialize, Serialize)]
-#[kube(group = "h2o.ai", version = "v1", kind = "H2O", namespaced)]
+#[kube(group = "h2o.ai", version = "v1beta", kind = "H2O", namespaced)]
 #[kube(shortname = "h2o", namespaced)]
 pub struct H2OSpec {
     pub nodes: u32,
@@ -114,7 +115,7 @@ spec:
     singular: h2o
   scope: Namespaced
   versions:
-    - name: v1
+    - name: v1beta
       served: true
       storage: true
       schema:
@@ -158,6 +159,11 @@ spec:
 
 const RESOURCE_NAME: &str = "h2os.h2o.ai";
 
+/// Construct a new instance of `CustomResourceDefinition` with `H2OSpec` inside
+pub fn construct_h2o_crd() -> Result<CustomResourceDefinition, Error> {
+    Ok(serde_yaml::from_str(H2O_RESOURCE_TEMPLATE)?)
+}
+
 /// Creates `H2O` custom resource definition in a Kubernetes cluster.
 /// Asynchronous operation. The resource is issued to be created when this method returns,
 /// but there is no guarantee the resources is actually ready and recognized by the Kubernetes cluster
@@ -165,11 +171,11 @@ const RESOURCE_NAME: &str = "h2os.h2o.ai";
 ///
 /// # Arguments
 /// `client` - A client to create the CRD with. Must have sufficient permissions.
-pub async fn create(client: Client) -> Result<(), Error> {
+pub async fn create(client: Client) -> Result<CustomResourceDefinition, Error> {
     let api: Api<CustomResourceDefinition> = Api::all(client);
-    let h2o_crd: CustomResourceDefinition = serde_yaml::from_str(H2O_RESOURCE_TEMPLATE)?;
-    api.create(&PostParams::default(), &h2o_crd).await?;
-    Ok(())
+    let h2o_crd: CustomResourceDefinition = construct_h2o_crd()?;
+    Ok(api.create(&PostParams::default(), &h2o_crd).await?)
+
 }
 
 /// Deletes `H2O` CRD from a Kubernetes cluster.
@@ -189,8 +195,17 @@ pub async fn delete(client: Client) -> Result<(), Error> {
 /// # Arguments
 /// `client` - Kubernetes client to query the K8S API for existing H2O CRD.
 pub async fn exists(client: Client) -> bool {
+    get_current(client).await.is_ok()
+}
+
+/// Returns current instance of `CustomResourceDefinition`, if exists inside the cluster.
+/// Otherwise `Error`.
+///
+/// # Arguments
+/// `client` - A client to query the Kubernetes API for existing `CustomResourceDefinition` with
+pub async fn get_current(client: Client) -> Result<CustomResourceDefinition, Error> {
     let api: Api<CustomResourceDefinition> = Api::all(client);
-    return api.get(RESOURCE_NAME).await.is_ok();
+    Ok(api.get(RESOURCE_NAME).await?)
 }
 
 
@@ -279,6 +294,29 @@ pub fn has_h2o3_finalizer(h2o: &H2O) -> bool {
     };
 }
 
+/// Extracts names of supported specification versions from a `CustomResourceDefinition
+/// The resulting HashSet might be possibly empty.
+///
+/// # Arguments
+/// `crd` - A `CustomResourceDefinition` to extract supported specification versions from
+///
+/// # Example
+///
+/// ```rust
+/// use std::collections::HashSet;
+/// use deployment::crd::{spec_versions, construct_h2o_crd};
+/// let h2o_crd = construct_h2o_crd().unwrap();
+/// let spec_versions: HashSet<&str> = spec_versions(&h2o_crd);
+/// assert_eq!(1, spec_versions.len())
+/// ```
+pub fn spec_versions(crd: &CustomResourceDefinition) -> HashSet<&str> {
+    crd.spec
+        .versions
+        .iter()
+        .map(|version| version.name.as_str())
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     extern crate tests_common;
@@ -290,11 +328,12 @@ mod tests {
     use tests_common::kubeconfig_location_panic;
 
     use crate::crd::{CRDReadiness, H2O, H2OSpec, Resources};
+    use std::collections::HashSet;
 
-    /// Tests deployment and undeployment of custom CRD into Kubernetes - there will be no underlying
+    /// Tests creation and deletion of custom CRD into Kubernetes - there will be no underlying
     /// resources created, as an operator is not guaranteed to be running during the execution of this test.
     #[tokio::test]
-    async fn test_deploy() {
+    async fn test_create() {
         let kubeconfig_location = kubeconfig_location_panic();
         let (client, default_namespace): (Client, String) = crate::client::from_kubeconfig(kubeconfig_location.as_path())
             .await
@@ -316,5 +355,14 @@ mod tests {
         api.delete("crd-test-deploy", &DeleteParams::default()).await.unwrap();
 
         super::delete(client.clone()).await.unwrap();
+    }
+
+
+    #[tokio::test]
+    async fn test_spec_names(){
+        let h2o_crd = super::construct_h2o_crd().unwrap();
+        let spec_versions: HashSet<&str> = super::spec_versions(&h2o_crd);
+        let expected_versions: HashSet<&str> = ["v1beta"].iter().cloned().collect();
+        assert!(spec_versions.eq(&expected_versions));
     }
 }

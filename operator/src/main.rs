@@ -4,15 +4,17 @@ extern crate log;
 extern crate simple_logger;
 extern crate tokio;
 
+use std::collections::HashSet;
 use std::time::Duration;
 
-use kube::{Client};
+use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
+use kube::Client;
 use log::{error, info, LevelFilter};
 use simple_logger::SimpleLogger;
-use deployment::Error;
 
 use deployment::crd;
 use deployment::crd::CRDReadiness;
+use deployment::Error;
 
 mod controller;
 
@@ -76,15 +78,22 @@ fn initialize_logging() {
         .unwrap();
 }
 
-/// Ensures all CRDs handled by this operator are present in the cluster. First, the Kubernetes API
-/// is queried for existing CRD deployments.Version of the CRDs is not taken into account.
-/// If any of the required CRDs is missing, an attempt is made to create it.
-/// If CRDs are missing and creation attempt fails, this method calls `std::process:exit` to end the
-/// operator process with status code of `1`. Before `exit`, the error message with the cause of failure
-/// is logged on `error` level.
+/// Ensures all of the following:
+/// - H2O CRD is deployed
+/// - The H2O CRD declares support for exactly the same `H2OSpec` versions as this operator.
 ///
+/// If there is no CRD deployed yet, an attempt to deploy it is made.
 /// The CRDs are created cluster-wide and not tied to a specific Kubernetes namespace. This is one possible source of
 /// errors, as permissions of the user running the operator might not suffice.
+///
+/// If there is H2O CRD already present, this function will inspect the supported `H2OSpec` versions
+/// and make sure the already present H2O CRD supports exactly the same `H2OSpec` versions as this operator.
+/// Otherwise terminates the operator process with exit code `1`. The reason for this behavior is
+/// the inability to reconcile unsupported versions of the H2O specifications. Users are required to
+/// delete the old CRD first, as the CRD deletion process triggers `delete` operation on existing H2O deployments.
+/// Those delete operations are delegated into the respective operator, which is obliged to delete the existing H2O deployments first.
+/// Only after all existing H2O deployments are deleted, the H2O custom resource definition is finally deleted
+/// and it is possible to deploy other version of the H2O CRD.
 ///
 /// # Arguments
 ///
@@ -101,28 +110,47 @@ fn initialize_logging() {
 ///
 /// # Panics
 ///
-/// If `H2O` CRD is not detected and creation fails, the operator would be running in vain.
+/// - If `H2O` CRD is not detected and creation fails, the operator would be running in vain.
+/// - If `H2O` CRD is present and declares support for a different set of `H2OSpec`s versions.
 /// ```
 async fn ensure_crd_created(client: Client) {
-    if crd::exists(client.clone()).await {
-        info!("Detected H2O CustomResourceDefinition already present in the cluster.");
-    } else {
-        info!(
-            "No H2O CustomResourceDefinition detected in the K8S cluster. Attempting to create it."
-        );
-        deployment::crd::create(client.clone()).await.unwrap();
-        let timeout: Duration = Duration::from_secs(30);
-        let result = deployment::crd::wait_crd_status(client.clone(), timeout, CRDReadiness::Ready).await;
-        match result {
-            Ok(_) => {
-                info!("Successfully deployed H2O CustomResourceDefinition into the cluster.");
-            }
-            Err(_) => {
-                error!(
-                    "H2O CustomResourceDefinition not accepted in {} seconds.",
-                    timeout.as_secs()
-                );
+    let existing_crd_result = crd::get_current(client.clone()).await;
+
+    match existing_crd_result {
+        Ok(existing_crd) => {
+            info!("Detected H2O CustomResourceDefinition already present in the cluster.");
+            let new_crd = crd::construct_h2o_crd()
+                .expect("Unable to construct H2O CRD for version compatibility check.");
+            let existing_crd_supported_versions: HashSet<&str> = crd::spec_versions(&existing_crd);
+            let this_crd_supported_versions: HashSet<&str> = crd::spec_versions(&new_crd);
+
+            if this_crd_supported_versions.eq(&existing_crd_supported_versions)
+                && existing_crd_supported_versions.len() == this_crd_supported_versions.len() {
+                info!("Existing H2O CRD supports the same specification versions as this operator: {:?}", &this_crd_supported_versions)
+            } else {
+                error!("Existing H2O CRD supports versions different from this operator:\n{:?}.\
+                 \nThis operator supports:\n{:?}.\nExiting.", &existing_crd_supported_versions, &this_crd_supported_versions);
                 std::process::exit(1);
+            }
+        }
+        Err(_) => {
+            info!(
+                "No H2O CustomResourceDefinition detected in the K8S cluster. Attempting to create it."
+            );
+            let created_crd: CustomResourceDefinition = deployment::crd::create(client.clone()).await.unwrap();
+            let timeout: Duration = Duration::from_secs(30);
+            let result = deployment::crd::wait_crd_status(client.clone(), timeout, CRDReadiness::Ready).await;
+            match result {
+                Ok(_) => {
+                    info!("Successfully deployed H2O CustomResourceDefinition into the cluster. Supported specification versions: {:?}", crd::spec_versions(&created_crd));
+                }
+                Err(error) => {
+                    error!(
+                        "H2O CustomResourceDefinition not accepted in {} seconds. Reason:\n{}",
+                        timeout.as_secs(), error
+                    );
+                    std::process::exit(1);
+                }
             }
         }
     }
