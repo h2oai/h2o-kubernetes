@@ -1,5 +1,6 @@
 extern crate log;
 
+use std::collections::HashSet;
 use std::time::Duration;
 
 use futures::{StreamExt, TryStreamExt};
@@ -10,7 +11,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::Error;
 use crate::finalizer;
-use std::collections::HashSet;
 
 /// Specification of an H2O cluster in a Kubernetes cluster.
 /// Determines attributes like cluster size, resources (cpu, memory) and pod configuration.
@@ -175,7 +175,6 @@ pub async fn create(client: Client) -> Result<CustomResourceDefinition, Error> {
     let api: Api<CustomResourceDefinition> = Api::all(client);
     let h2o_crd: CustomResourceDefinition = construct_h2o_crd()?;
     Ok(api.create(&PostParams::default(), &h2o_crd).await?)
-
 }
 
 /// Deletes `H2O` CRD from a Kubernetes cluster.
@@ -228,11 +227,7 @@ pub enum CRDReadiness {
 /// `client` - Client to use for watching the CRD
 /// `timeout` - Maximum amount of time to wait before returning `Result::Error`
 /// `state` - Desired `CRDReadiness` state to wait for.
-pub async fn wait_crd_status(client: Client, timeout: Duration, state: CRDReadiness) -> Result<(), Error> {
-    if exists(client.clone()).await {
-        return Ok(());
-    }
-
+pub async fn wait_crd_status(client: Client, timeout: Duration, state: CRDReadiness) -> Result<CustomResourceDefinition, Error> {
     let api: Api<CustomResourceDefinition> = Api::all(client);
     let lp = ListParams::default()
         .fields(&format!("metadata.name={}", RESOURCE_NAME))
@@ -240,9 +235,9 @@ pub async fn wait_crd_status(client: Client, timeout: Duration, state: CRDReadin
     let mut stream = api.watch(&lp, "0").await?.boxed();
 
     while let Some(status) = stream.try_next().await? {
-        if let WatchEvent::Modified(s) = status {
-            if let Some(s) = s.status {
-                if let Some(conds) = s.conditions {
+        if let WatchEvent::Modified(crd) = status {
+            if let Some(s) = crd.status.as_ref() {
+                if let Some(conds) = s.conditions.as_ref() {
                     if let Some(pcond) = conds.iter().find(|c| c.type_ == "NamesAccepted") {
                         let desired_crd_status = match state {
                             CRDReadiness::Ready => {
@@ -254,7 +249,7 @@ pub async fn wait_crd_status(client: Client, timeout: Duration, state: CRDReadin
                         };
 
                         if desired_crd_status {
-                            return Ok(());
+                            return Ok(crd);
                         }
                     }
                 }
@@ -262,6 +257,44 @@ pub async fn wait_crd_status(client: Client, timeout: Duration, state: CRDReadin
         }
     }
     return Result::Err(Error::Timeout(format!("H2O Custom Resource not in ready state after {} seconds.", timeout.as_secs())));
+}
+
+pub async fn wait_deleted(client: Client, timeout: Duration) -> Result<CustomResourceDefinition, Error> {
+    let api: Api<CustomResourceDefinition> = Api::all(client);
+    let lp = ListParams::default()
+        .fields(&format!("metadata.name={}", RESOURCE_NAME))
+        .timeout(timeout.as_secs() as u32);
+    let mut stream = api.watch(&lp, "0").await?.boxed();
+
+    while let Some(status) = stream.try_next().await? {
+        match status {
+            WatchEvent::Deleted(crd) => {
+                return Ok(crd);
+            }
+            _ => {}
+        }
+    };
+
+    return Result::Err(Error::Timeout(format!("H2O Custom Resource not deleted after {} seconds.", timeout.as_secs())));
+}
+
+pub async fn wait_added(client: Client, timeout: Duration) -> Result<CustomResourceDefinition, Error> {
+    let api: Api<CustomResourceDefinition> = Api::all(client);
+    let lp = ListParams::default()
+        .fields(&format!("metadata.name={}", RESOURCE_NAME))
+        .timeout(timeout.as_secs() as u32);
+    let mut stream = api.watch(&lp, "0").await?.boxed();
+
+    while let Some(status) = stream.try_next().await? {
+        match status {
+            WatchEvent::Added(crd) => {
+                return Ok(crd);
+            }
+            _ => {}
+        }
+    };
+
+    return Result::Err(Error::Timeout(format!("H2O Custom Resource not deleted after {} seconds.", timeout.as_secs())));
 }
 
 /// Scans `H2O` resources and returns `true` if there is a deletion timestamp present in the resource's
@@ -321,6 +354,8 @@ pub fn spec_versions(crd: &CustomResourceDefinition) -> HashSet<&str> {
 mod tests {
     extern crate tests_common;
 
+    use std::collections::HashSet;
+
     use kube::{Api, Client};
     use kube::api::{DeleteParams, PostParams};
     use tokio::time::Duration;
@@ -328,7 +363,6 @@ mod tests {
     use tests_common::kubeconfig_location_panic;
 
     use crate::crd::{CRDReadiness, H2O, H2OSpec, Resources};
-    use std::collections::HashSet;
 
     /// Tests creation and deletion of custom CRD into Kubernetes - there will be no underlying
     /// resources created, as an operator is not guaranteed to be running during the execution of this test.
@@ -340,9 +374,10 @@ mod tests {
             .unwrap();
         if super::exists(client.clone()).await {
             super::delete(client.clone()).await.unwrap();
-            super::wait_crd_status(client.clone(), Duration::from_secs(30), CRDReadiness::Unready).await.unwrap();
+            super::wait_deleted(client.clone(), Duration::from_secs(30)).await.unwrap();
         }
         super::create(client.clone()).await.unwrap();
+        super::wait_added(client.clone(), Duration::from_secs(30)).await.unwrap();
         super::wait_crd_status(client.clone(), Duration::from_secs(30), CRDReadiness::Ready).await.unwrap();
         assert!(super::exists(client.clone()).await);
 
@@ -355,11 +390,12 @@ mod tests {
         api.delete("crd-test-deploy", &DeleteParams::default()).await.unwrap();
 
         super::delete(client.clone()).await.unwrap();
+        super::wait_deleted(client.clone(), Duration::from_secs(30)).await.unwrap();
     }
 
 
     #[tokio::test]
-    async fn test_spec_names(){
+    async fn test_spec_names() {
         let h2o_crd = super::construct_h2o_crd().unwrap();
         let spec_versions: HashSet<&str> = super::spec_versions(&h2o_crd);
         let expected_versions: HashSet<&str> = ["v1beta"].iter().cloned().collect();

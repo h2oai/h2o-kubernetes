@@ -139,6 +139,9 @@ async fn ensure_crd_created(client: Client) {
             );
             let created_crd: CustomResourceDefinition = deployment::crd::create(client.clone()).await.unwrap();
             let timeout: Duration = Duration::from_secs(30);
+            // Waiting for the resource to be added first, otherwise the readiness watch would fail with an error, as there would be no resource to watch.
+            deployment::crd::wait_added(client.clone(), timeout).await
+                .expect(format!("H2O CRD not added within {} seconds", timeout.as_secs()).as_ref());
             let result = deployment::crd::wait_crd_status(client.clone(), timeout, CRDReadiness::Ready).await;
             match result {
                 Ok(_) => {
