@@ -377,7 +377,6 @@ mod tests {
             super::wait_deleted(client.clone(), Duration::from_secs(30)).await.unwrap();
         }
         super::create(client.clone()).await.unwrap();
-        super::wait_added(client.clone(), Duration::from_secs(30)).await.unwrap();
         super::wait_crd_status(client.clone(), Duration::from_secs(30), CRDReadiness::Ready).await.unwrap();
         assert!(super::exists(client.clone()).await);
 
