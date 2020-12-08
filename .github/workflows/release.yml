@@ -26,7 +26,7 @@ jobs:
       - name: Cargo test
         run: cargo test --verbose
       - name: Release build
-        run: rustup target add ${{ env.TARGET_LINUX }} && rustup target add ${{ env.TARGET_WINDOWS }} && cargo build --release --target ${{ env.TARGET_LINUX }} && cargo build --release --target ${{ env.TARGET_WINDOWS }}
+        run: rustup target add ${{ env.TARGET_LINUX }} && rustup target add ${{ env.TARGET_WINDOWS }} && cargo build -p h2ok --release --target ${{ env.TARGET_LINUX }} && cargo build -p h2ok --release --target ${{ env.TARGET_WINDOWS }}
       - name: Create ${{ env.TARGET_LINUX }} and ${{ env.TARGET_LINUX }} ZIP packages
         run: zip -j h2ok_${{ env.TARGET_LINUX }}.zip target/${{ env.TARGET_LINUX }}/release/h2ok LICENSE && zip -j h2ok_${{ env.TARGET_WINDOWS }}.zip target/${{ env.TARGET_WINDOWS }}/release/h2ok.exe LICENSE
       - name: Upload ${{ env.TARGET_LINUX }}
@@ -45,7 +45,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Create ${{ env.TARGET_MACOS }} ZIP package
-        run: cargo build --release --target ${{ env.TARGET_MACOS }} && zip -j h2ok_${{ env.TARGET_MACOS }}.zip target/${{ env.TARGET_MACOS }}/release/h2ok LICENSE
+        run: cargo build -p h2ok --release --target ${{ env.TARGET_MACOS }} && zip -j h2ok_${{ env.TARGET_MACOS }}.zip target/${{ env.TARGET_MACOS }}/release/h2ok LICENSE
       - name: Upload ${{ env.TARGET_MACOS }}
         uses: actions/upload-artifact@v2
         with:

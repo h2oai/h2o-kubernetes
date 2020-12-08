@@ -1,0 +1,11 @@
+apiVersion: h2o.ai/v1
+kind: H2O
+metadata:
+  name: h2o-test
+spec:
+  nodes: 3
+  version: "3.32.0.1"
+  resources:
+    cpu: 1
+    memory: "512Mi"
+    memoryPercentage: 90
