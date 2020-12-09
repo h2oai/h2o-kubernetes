@@ -1,0 +1,250 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  name: h2o-operator.v0.1.0
+  namespace: placeholder
+  annotations:
+    alm-examples: '[{"apiVersion":"","kind":"H2O","metadata":{"name":""},"spec":{}}]'
+    categories: AI/Machine Learning
+    certified: 'true'
+    createdAt: '<created-date>'
+    description: >-
+      A Kubernetes operator for H2O  Open Source, Distributed, Fast & Scalable
+      Machine Learning Platform.
+    containerImage: 'registry.connect.redhat.com/h2oai/h2o-operator'
+    support: 'H2O.ai'
+    capabilities: Basic Install
+    repository: 'https://github.com/h2oai/h2o-kubernetes'
+spec:
+  displayName: H2O Open Source Machine Learning Operator
+  description: >
+    ## About the managed application
+
+    [H2O](https://github.com/h2oai/h2o-3) is an in-memory platform for
+    distributed, scalable machine learning. H2O uses familiar interfaces like R,
+    Python, Scala, Java, JSON and the Flow notebook/web interface, and works
+    seamlessly with big data technologies like Hadoop and Spark. H2O provides
+    implementations of many popular algorithms such as Generalized Linear Models
+    (GLM), Gradient Boosting Machines (including XGBoost), Random Forests, Deep
+    Neural Networks, Stacked Ensembles, Naive Bayes, Generalized Additive Models
+    (GAM), Cox Proportional Hazards, K-Means, PCA, Word2Vec, as well as a fully
+    automatic machine learning algorithm (H2O AutoML).
+
+
+    H2O is extensible so that developers can add data transformations and custom
+    algorithms of their choice and access them through all of those clients. H2O
+    models can be downloaded and loaded into H2O memory for scoring, or exported
+    into POJO or MOJO format for extemely fast scoring in production. More
+    information can be found in the H2O User Guide.
+
+    ## About this Operator
+
+    Once deployed to a Kubernetes cluster, a new custom resource named H2O is
+    recognized by Kubernetes, making it easy to create H2O clusters inside
+    Kubernetes cluster.
+
+    ## Prerequisites for enabling this Operator
+
+    There are no requirements. The Operator will attempt to create a proper
+    version of H2O CustomResourceDefinition, if not found on the Kubernetes
+    cluster.
+  maturity: beta
+  version: 0.1.0
+  replaces: ''
+  skips: []
+  minKubeVersion: 1.17.0
+  keywords: []
+  maintainers:
+    - name: Pavel Pscheidl
+      email: pavel.pscheidl@h2o.ai
+    - name: Michal Kurka
+      email: michal.kurka@h2o.ai
+  provider:
+    name: H2O.ai
+  labels: {}
+  selector:
+    matchLabels: {}
+  links:
+    - name: H2O.ai
+      url: 'https://www.h2o.ai/'
+    - name: H2O-3 GitHub
+      url: 'https://github.com/h2oai/h2o-3'
+    - name: H2O Kubernetes Operator GitHub
+      url: 'https://github.com/h2oai/h2o-kubernetes'
+  icon:
+    - base64data: >-
+        PHN2ZyB2ZXJzaW9uPSIxLjEiIGlkPSJMYXllcl8xIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHg9IjAiIHk9IjAiIHZpZXdCb3g9IjAgMCA2NCA2NCIgeG1sOnNwYWNlPSJwcmVzZXJ2ZSI+PHN0eWxlIHR5cGU9InRleHQvY3NzIj4uc3Qye2ZpbGw6IzIzMWYyMH08L3N0eWxlPjxnIGlkPSJQYWdlLTEtQ29weSI+PGcgaWQ9IkgyT19Mb2dvXzIwMTciPjxwYXRoIGlkPSJGaWxsLTEiIGZpbGw9IiNmZmU1MmIiIGQ9Ik0wIDY0aDY0VjBIMHoiLz48cGF0aCBpZD0iRmlsbC0yIiBkPSJNNTUuOCAyMi40Yy0uNiAwLTEuMS41LTEuMSAxLjEgMCAuNi41IDEuMSAxLjEgMS4xLjYgMCAxLjEtLjUgMS4xLTEuMSAwLS42LS41LTEuMS0xLjEtMS4xem0tLjcgMTMuM2gxLjV2LTguOWgtMS41djguOXpNNDcuNiAyOGMxLjkgMCAzIDEuNCAzIDMuMiAwIDEuOC0xIDMuNC0zIDMuNC0xLjkgMC0yLjktMS42LTIuOS0zLjQgMC0xLjcgMS4xLTMuMiAyLjktMy4yem00LjQtMS4yaC0xLjV2MS4zYy0uNy0uOS0xLjgtMS41LTMuMS0xLjUtMi43IDAtNC4zIDIuMi00LjMgNC43czEuNyA0LjcgNC4zIDQuN2MxLjMgMCAyLjMtLjUgMy4xLTEuNXYxLjJINTJ2LTguOXptLTExLjUgN2MtLjYgMC0xLjEuNS0xLjEgMSAwIC42LjUgMS4xIDEuMSAxLjEuNiAwIDEuMS0uNSAxLjEtMS4xIDAtLjUtLjUtMS0xLjEtMXoiIGZpbGw9ImdyYXkiLz48cGF0aCBpZD0iRmlsbC00IiBkPSJNMTAgMjguOXYtNC41SDdWMzZoM3YtNC43aDQuM1YzNmgzVjI0LjRoLTN2NC41eiIvPjxnIGlkPSJHcm91cC05IiB0cmFuc2Zvcm09InRyYW5zbGF0ZSgxOC44MjcgMjQpIj48cGF0aCBpZD0iRmlsbC01IiBjbGFzcz0ic3QyIiBkPSJNNCAxNS43bDEuMy0xLjJjLjgtLjggMS4zLTEuNSAxLjMtMi43IDAtMS44LTEuNS0zLTMuMi0zLTIgMC0zLjIgMS4zLTMuMiAzLjJoMi40di0uNGMwLS42LjMtMSAuOS0xIC42IDAgLjkuNi45IDEuMSAwIC44LS41IDEuNS0uOSAyLjFMMCAxNy41aDYuN3YtMS44SDQiLz48cGF0aCBpZD0iRmlsbC03IiBjbGFzcz0ic3QyIiBkPSJNMTMuNCAyLjljMS44IDAgMy4zIDEuNSAzLjMgMy4xIDAgMi0xLjUgMy41LTMuMyAzLjVTMTAuMSA4IDEwLjEgNmMwLTEuNiAxLjUtMy4xIDMuMy0zLjFtMC0yLjlDMTAuMSAwIDcgMi41IDcgNmMwIDMuOCAyLjcgNi40IDYuNCA2LjRzNi40LTIuNyA2LjQtNi40YzAtMy41LTMuMS02LTYuNC02Ii8+PC9nPjwvZz48L2c+PC9zdmc+
+      mediatype: image/svg+xml
+  customresourcedefinitions:
+    owned:
+      - name: h2os.h2o.ai
+        displayName: H2O
+        kind: H2O
+        version: v1beta
+        description: H2O
+        resources:
+          - version: v1
+            kind: Deployment
+          - version: v1
+            kind: Service
+          - version: v1
+            kind: ReplicaSet
+          - version: v1
+            kind: Pod
+          - version: v1
+            kind: Secret
+          - version: v1
+            kind: ConfigMap
+        specDescriptors: []
+        statusDescriptors: []
+    required: []
+  install:
+    strategy: deployment
+    spec:
+      clusterPermissions:
+      - rules:
+        - apiGroups:
+          - ""
+          resources:
+          - namespaces
+          verbs:
+          - get
+        - apiGroups:
+          - ""
+          resources:
+          - secrets
+          verbs:
+          - '*'
+        - apiGroups:
+          - ""
+          resources:
+          - events
+          verbs:
+          - create
+        - apiGroups:
+          - example.com
+          resources:
+          - wordpresses
+          - wordpresses/status
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - ""
+          resources:
+          - pods
+          - services
+          - services/finalizers
+          - endpoints
+          - persistentvolumeclaims
+          - events
+          - configmaps
+          - secrets
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - apps
+          resources:
+          - deployments
+          - daemonsets
+          - replicasets
+          - statefulsets
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - authentication.k8s.io
+          resources:
+          - tokenreviews
+          verbs:
+          - create
+        - apiGroups:
+          - authorization.k8s.io
+          resources:
+          - subjectaccessreviews
+          verbs:
+          - create
+        serviceAccountName: default
+      deployments:
+        - name: h2o-operator-deployment
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                k8s-app: h2o-operator
+            template:
+              metadata:
+                labels:
+                  k8s-app: h2o-operator
+              spec:
+                containers:
+                  image: 'h2oai/h2o-operator:v0.1.0'
+                  imagePullPolicy: IfNotPresent
+                  name: h2o-operator
+                  resources:
+                    limits:
+                      cpu: 4
+                      memory: 4Gi
+                    requests:
+                      cpu: 1
+                      memory: 128Mi
+                  env:
+                    - name: WATCH_NAMESPACE
+                      valueFrom:
+                        fieldRef:
+                          fieldPath: 'metadata.annotations[''olm.targetNamespaces'']'
+                    - name: POD_NAME
+                      valueFrom:
+                        fieldRef:
+                          fieldPath: metadata.name
+                    - name: OPERATOR_NAME
+                      value: h2o-operator
+                imagePullSecrets:
+                  - name: ''
+      permissions:
+        - rules:
+            - apiGroups:
+                - ""
+              resources:
+                - configmaps
+              verbs:
+                - get
+                - list
+                - watch
+                - create
+                - update
+                - patch
+                - delete
+            - apiGroups:
+                - ""
+              resources:
+                - events
+              verbs:
+                - create
+                - patch
+          serviceAccountName: default
+  installModes:
+  - supported: true
+    type: OwnNamespace
+  - supported: true
+    type: SingleNamespace
+  - supported: false
+    type: MultiNamespace
+  - supported: true
+    type: AllNamespaces

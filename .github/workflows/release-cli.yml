@@ -1,17 +1,17 @@
-name: Release
-# Creates a release for push event  to matching v*, i.e. v1.0, v20.15.10
-# The release created is a draft - this means it has to be checked and published manually afterwards.
-# This is purely intentional.
+name: CLI Release
+# Creates a release for push event  to matching h2ok-*, i.e. v1.0, v20.15.10
+# The release created is a draft - this means it has to be checked and published manually afterwards to enforce manual check.
 on:
   push:
     tags:
-      - 'v*'
+      - 'cli-*'
 
 env:
   CARGO_TERM_COLOR: always
   TARGET_LINUX: x86_64-unknown-linux-gnu
   TARGET_MACOS: x86_64-apple-darwin
   TARGET_WINDOWS: x86_64-pc-windows-gnu
+  RELEASED_ARTIFACT_NAME: h2ok
 
 jobs:
   build-linux:
@@ -26,31 +26,31 @@ jobs:
       - name: Cargo test
         run: cargo test --verbose
       - name: Release build
-        run: rustup target add ${{ env.TARGET_LINUX }} && rustup target add ${{ env.TARGET_WINDOWS }} && cargo build -p h2ok --release --target ${{ env.TARGET_LINUX }} && cargo build -p h2ok --release --target ${{ env.TARGET_WINDOWS }}
+        run: rustup target add ${{ env.TARGET_LINUX }} && rustup target add ${{ env.TARGET_WINDOWS }} && cargo build -p ${{ env.RELEASED_ARTIFACT_NAME }} --release --target ${{ env.TARGET_LINUX }} && cargo build -p ${{ env.RELEASED_ARTIFACT_NAME }} --release --target ${{ env.TARGET_WINDOWS }}
       - name: Create ${{ env.TARGET_LINUX }} and ${{ env.TARGET_LINUX }} ZIP packages
-        run: zip -j h2ok_${{ env.TARGET_LINUX }}.zip target/${{ env.TARGET_LINUX }}/release/h2ok LICENSE && zip -j h2ok_${{ env.TARGET_WINDOWS }}.zip target/${{ env.TARGET_WINDOWS }}/release/h2ok.exe LICENSE
+        run: zip -j ${{ env.RELEASED_ARTIFACT_NAME }}_${{ env.TARGET_LINUX }}.zip target/${{ env.TARGET_LINUX }}/release/${{ env.RELEASED_ARTIFACT_NAME }} LICENSE && zip -j ${{ env.RELEASED_ARTIFACT_NAME }}_${{ env.TARGET_WINDOWS }}.zip target/${{ env.TARGET_WINDOWS }}/release/${{ env.RELEASED_ARTIFACT_NAME }}.exe LICENSE
       - name: Upload ${{ env.TARGET_LINUX }}
         uses: actions/upload-artifact@v2
         with:
           name: ${{ env.TARGET_LINUX }}
-          path: h2ok_${{ env.TARGET_LINUX }}.zip
+          path: ${{ env.RELEASED_ARTIFACT_NAME }}_${{ env.TARGET_LINUX }}.zip
       - name: Upload ${{ env.TARGET_WINDOWS }}
         uses: actions/upload-artifact@v2
         with:
           name: ${{ env.TARGET_WINDOWS }}
-          path: h2ok_${{ env.TARGET_WINDOWS }}.zip
+          path: ${{ env.RELEASED_ARTIFACT_NAME }}_${{ env.TARGET_WINDOWS }}.zip
 
   build-macos:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v2
       - name: Create ${{ env.TARGET_MACOS }} ZIP package
-        run: cargo build -p h2ok --release --target ${{ env.TARGET_MACOS }} && zip -j h2ok_${{ env.TARGET_MACOS }}.zip target/${{ env.TARGET_MACOS }}/release/h2ok LICENSE
+        run: cargo build -p ${{ env.RELEASED_ARTIFACT_NAME }} --release --target ${{ env.TARGET_MACOS }} && zip -j ${{ env.RELEASED_ARTIFACT_NAME }}_${{ env.TARGET_MACOS }}.zip target/${{ env.TARGET_MACOS }}/release/${{ env.RELEASED_ARTIFACT_NAME }} LICENSE
       - name: Upload ${{ env.TARGET_MACOS }}
         uses: actions/upload-artifact@v2
         with:
           name: ${{ env.TARGET_MACOS }}
-          path: h2ok_${{ env.TARGET_MACOS }}.zip
+          path: ${{ env.RELEASED_ARTIFACT_NAME }}_${{ env.TARGET_MACOS }}.zip
 
   release:
     name: Create Release
@@ -88,7 +88,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./h2ok_${{ env.TARGET_LINUX }}.zip
+          asset_path: ./${{ env.RELEASED_ARTIFACT_NAME }}_${{ env.TARGET_LINUX }}.zip
           asset_name: ${{ env.TARGET_LINUX }}
           asset_content_type: application
       - name: Upload ${{ env.TARGET_WINDOWS }} asset
@@ -98,7 +98,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./h2ok_${{ env.TARGET_WINDOWS }}.zip
+          asset_path: ./${{ env.RELEASED_ARTIFACT_NAME }}_${{ env.TARGET_WINDOWS }}.zip
           asset_name: ${{ env.TARGET_WINDOWS }}
           asset_content_type: application
       - name: Upload ${{ env.TARGET_MACOS }} asset
@@ -108,6 +108,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./h2ok_${{ env.TARGET_MACOS }}.zip
+          asset_path: ./${{ env.RELEASED_ARTIFACT_NAME }}_${{ env.TARGET_MACOS }}.zip
           asset_name: ${{ env.TARGET_MACOS }}
           asset_content_type: application

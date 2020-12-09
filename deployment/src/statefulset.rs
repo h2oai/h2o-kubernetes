@@ -50,8 +50,6 @@ spec:
           env:
           - name: H2O_KUBERNETES_SERVICE_DNS
             value: <name>.<namespace>.svc.cluster.local
-          - name: H2O_NODE_LOOKUP_TIMEOUT
-            value: '180'
           - name: H2O_NODE_EXPECTED_COUNT
             value: '<nodes>'
           - name: H2O_KUBERNETES_API_PORT
