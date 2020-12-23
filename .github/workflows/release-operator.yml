@@ -139,7 +139,7 @@ jobs:
           docker logout
 
   push-new-version-git:
-    needs: [push-git-tag]
+    needs: [build-docker]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
