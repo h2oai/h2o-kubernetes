@@ -17,18 +17,8 @@ env:
   OPERATOR_NAME: h2oai/h2o-operator
 
 jobs:
-  current-ver:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Extract current version
-        id: current_ver
-        run: |
-          VERSION=$(cat operator/Cargo.toml | sed -n "s/^version\s*=\s*\"\([0-9]*\.[0-9]*\.[0-9]*\)\"$/\1/p")
-          echo "::set-output name=version::$VERSION"
 
   build-linux-win:
-    needs: [current-ver]
     name: Build Linux & Windows binaries
     runs-on: ubuntu-latest
     steps:
@@ -38,6 +28,11 @@ jobs:
         uses: debianmaster/actions-k3s@v1.0.1
         id: k3s
       - uses: actions/checkout@v2
+      - name: Extract current version
+        id: current-ver
+        run: |
+          VERSION=$(cat operator/Cargo.toml | sed -n "s/^version\s*=\s*\"\([0-9]*\.[0-9]*\.[0-9]*\)\"$/\1/p")
+          echo "::set-output name=version::$VERSION"
       - name: Cargo test
         run: cargo test --verbose
       - name: Release build
@@ -56,11 +51,15 @@ jobs:
           path: ${{ env.RELEASED_ARTIFACT_NAME }}_${{ env.TARGET_WINDOWS }}.zip
 
   build-macos:
-    needs: [current-ver]
     name: Build macOs binaries
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v2
+      - name: Extract current version
+        id: current-ver
+        run: |
+          VERSION=$(cat operator/Cargo.toml | sed -n "s/^version\s*=\s*\"\([0-9]*\.[0-9]*\.[0-9]*\)\"$/\1/p")
+          echo "::set-output name=version::$VERSION"
       - name: Create ${{ env.TARGET_MACOS }} ZIP package
         run: cargo build -p ${{ env.RELEASED_ARTIFACT_NAME }} --release --target ${{ env.TARGET_MACOS }} && zip -j ${{ env.RELEASED_ARTIFACT_NAME }}_${{ env.TARGET_MACOS }}.zip target/${{ env.TARGET_MACOS }}/release/${{ env.RELEASED_ARTIFACT_NAME }} LICENSE
       - name: Upload ${{ env.TARGET_MACOS }}
@@ -76,15 +75,20 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
+      - name: Extract current version
+        id: current-ver
+        run: |
+          VERSION=$(cat operator/Cargo.toml | sed -n "s/^version\s*=\s*\"\([0-9]*\.[0-9]*\.[0-9]*\)\"$/\1/p")
+          echo "::set-output name=version::$VERSION"
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
-          draft: true
+          tag_name: operator-${{ steps.current-ver.outputs.version}}}
+          release_name: H2O Kubernetes operator v${{ steps.current-ver.outputs.version}}}
+          draft: false
           prerelease: false
       - name: Download ${{ env.TARGET_LINUX }} binary
         uses: actions/download-artifact@v2
@@ -136,6 +140,11 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v2
+      - name: Extract current version
+        id: current-ver
+        run: |
+          VERSION=$(cat operator/Cargo.toml | sed -n "s/^version\s*=\s*\"\([0-9]*\.[0-9]*\.[0-9]*\)\"$/\1/p")
+          echo "::set-output name=version::$VERSION"
       - name: Build Operator Dockerfile
         run: |
           echo "${{ secrets.OPERATOR_RED_HAT_REGISTRY_KEY }}" | docker login -u unused scan.connect.redhat.com --password-stdin
@@ -155,12 +164,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - name: Release tag
-        uses: tvdias/github-tagger@v0.0.1
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          tag: operator-${{ steps.current-ver.outputs.version }}
-          commit-sha: ${{ github.sha }}
       - name: Commit new version
         uses: EndBug/add-and-commit@v5
         with:
