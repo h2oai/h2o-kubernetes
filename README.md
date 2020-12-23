@@ -1,6 +1,6 @@
 # H2O Kubernetes
 
-![Rust](https://github.com/h2oai/h2o-kubernetes/workflows/Rust/badge.svg)
+![Tests](https://github.com/h2oai/h2o-kubernetes/workflows/Tests/badge.svg)
 
 Repository with official tools to aid the deployment of [H2O Machine Learning platform](https://github.com/h2oai/h2o-3) to [Kubernetes](https://kubernetes.io/).
 There are two essential tools to be found in this repository:

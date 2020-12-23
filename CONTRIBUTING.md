@@ -33,11 +33,11 @@ Automated tests are ran via GitHub actions - the test environment provides the `
 The definition is to be found in the [.github/workflows/rust.yml](.github/workflows/rust.yml) file.
 
 ## Releasing
-Currently, only the `h2ok` CLI has automated release to be found in the [.github/workflows/release.yml](.github/workflows/release.yml) file. To release,
+Currently, only the `h2ok` CLI has automated release to be found in the [.github/workflows/release.yml](.github/workflows/release-cli.yml) file. To release,
 tag a commit with version on `master` branch and push the tag into GitHub. The release will be triggered automatically.
 
 ```bash
-git tag "0.1.0:
+git tag "cli-0.1.0:
 git push
 ```
 
