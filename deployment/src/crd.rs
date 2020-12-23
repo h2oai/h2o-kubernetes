@@ -1,4 +1,5 @@
 extern crate log;
+extern crate schemars;
 
 use std::collections::HashSet;
 use std::time::Duration;
@@ -8,13 +9,14 @@ use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomRe
 use kube::{Api, api::ListParams, Client, CustomResource};
 use kube::api::{DeleteParams, PostParams, WatchEvent};
 use serde::{Deserialize, Serialize};
+use schemars::JsonSchema;
 
 use crate::Error;
 use crate::finalizer;
 
 /// Specification of an H2O cluster in a Kubernetes cluster.
 /// Determines attributes like cluster size, resources (cpu, memory) and pod configuration.
-#[derive(CustomResource, Debug, Clone, Deserialize, Serialize)]
+#[derive(CustomResource, Serialize, Deserialize, Debug, PartialEq, Clone, JsonSchema)]
 #[kube(group = "h2o.ai", version = "v1beta", kind = "H2O", namespaced)]
 #[kube(shortname = "h2o", namespaced)]
 pub struct H2OSpec {
@@ -54,7 +56,7 @@ impl H2OSpec {
 /// Resources allocated by each H2O pod
 /// Limits and requests are always set to the same value in order for H2O operations
 /// tobe reproducible.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, JsonSchema)]
 pub struct Resources {
     /// Number of virtual CPUs allocated to each H2O pod
     pub cpu: u32,
@@ -83,7 +85,7 @@ impl Resources {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, JsonSchema)]
 pub struct CustomImage {
     /// Full image definition, including repository prefix, image name and tag.
     pub image: String,
