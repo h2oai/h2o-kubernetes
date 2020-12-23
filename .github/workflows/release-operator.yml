@@ -138,23 +138,6 @@ jobs:
           python operator/release/red_hat_docker_certification.py --api_key ${{ secrets.RED_HAT_API_KEY }} --pid ${{ secrets.OPERATOR_BUNDLE_RED_HAT_PID }} --tag ${{ env.VERSION }} $DIGEST
           docker logout
 
-  push-git-tag:
-    needs: [ build-docker, gh-release ]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Extract current version
-        id: current_ver
-        run: |
-          VERSION=$(cat operator/Cargo.toml | sed -n "s/^version\s*=\s*\"\([0-9]*\.[0-9]*\.[0-9]*\)\"$/\1/p")
-          echo "::set-output name=version::$VERSION"
-      - name: Release tag
-        uses: tvdias/github-tagger@v0.0.1
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          tag: operator-${{ steps.current_ver.outputs.version }}
-          commit-sha: ${{ github.sha }}
-
   push-new-version-git:
     needs: [push-git-tag]
     runs-on: ubuntu-latest
@@ -163,7 +146,8 @@ jobs:
       - name: Extract current version
         id: current_ver
         run: |
-          sed -i "s/version = \"${{ steps.current_ver.outputs.version }}\"/version = \"${{ github.event.inputs.new_version }}\"/g" operator/Cargo.toml
+          CURRENT_VERSION=$(cat operator/Cargo.toml | sed -n "s/^version\s*=\s*\"\([0-9]*\.[0-9]*\.[0-9]*\)\"$/\1/p")
+          sed -i "s/version = \"$CURRENT_VERSION\"/version = \"${{ github.event.inputs.new_version }}\"/g" operator/Cargo.toml
       - name: Commit new version
         uses: EndBug/add-and-commit@v5
         with:
