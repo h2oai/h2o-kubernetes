@@ -147,8 +147,14 @@ jobs:
       - name: Extract current version
         id: current_ver
         run: |
-          CURRENT_VERSION=$(cat operator/Cargo.toml | sed -n "s/^version\s*=\s*\"\([0-9]*\.[0-9]*\.[0-9]*\)\"$/\1/p")
-          sed -i "s/version = \"$CURRENT_VERSION\"/version = \"${{ github.event.inputs.new_version }}\"/g" operator/Cargo.toml
+          VERSION=$(cat operator/Cargo.toml | sed -n "s/^version\s*=\s*\"\([0-9]*\.[0-9]*\.[0-9]*\)\"$/\1/p")
+          echo "::set-output name=version::$VERSION"
+      - name: Release tag
+        uses: tvdias/github-tagger@v0.0.1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          tag: operator-${{ steps.current_ver.outputs.version }}
+          commit-sha: ${{ github.sha }}
       - name: Commit new version
         uses: EndBug/add-and-commit@v5
         with:
@@ -156,6 +162,5 @@ jobs:
           author_email: '<pavel.pscheidl@h2o.ai>'
           message: 'Version ${{ github.event.inputs.new_version }}'
           add: 'operator/Cargo.toml'
-          tag: 'operator-${{ github.event.inputs.new_version }} --force'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
