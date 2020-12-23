@@ -119,6 +119,7 @@ jobs:
           asset_content_type: application
 
   build-docker:
+    needs: [gh-release]
     name: Build Operator Dockerfile
     runs-on: ubuntu-latest
     timeout-minutes: 60
