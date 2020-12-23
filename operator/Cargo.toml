@@ -17,6 +17,7 @@ tokio = { version = "0.2.22", features = ["macros", "rt-threaded"] }
 log = "0.4.11"
 simple_logger = "1.11.0"
 deployment = { path = "../deployment" }
+openssl = { version = "0.10", features = ["vendored"] }
 
 [dev-dependencies]
 assert_cmd = "1.0.1"
