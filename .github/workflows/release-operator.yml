@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Install cross-platform compile dependencies
-        run: sudo apt install mingw-w64 pkg-config libssl-dev -y
+        run: sudo apt install mingw-w64 mingw-w64-common mingw-w64-tools mingw-w64-dev mingw-w64-x86-64-dev pkg-config libssl-dev -y
       - name: Start K3S
         uses: debianmaster/actions-k3s@v1.0.1
         id: k3s
@@ -86,8 +86,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: operator-${{ steps.current-ver.outputs.version}}}
-          release_name: H2O Kubernetes operator v${{ steps.current-ver.outputs.version}}}
+          tag_name: operator-${{ steps.current-ver.outputs.version }}
+          release_name: H2O K8S Operator v${{ steps.current-ver.outputs.version}}}
           draft: false
           prerelease: false
       - name: Download ${{ env.TARGET_LINUX }} binary
