@@ -11,19 +11,17 @@ on:
 env:
   CARGO_TERM_COLOR: always
   TARGET_LINUX: x86_64-unknown-linux-gnu
-  TARGET_MACOS: x86_64-apple-darwin
-  TARGET_WINDOWS: x86_64-pc-windows-gnu
   RELEASED_ARTIFACT_NAME: h2o-operator
   OPERATOR_NAME: h2oai/h2o-operator
 
 jobs:
 
-  build-linux-win:
-    name: Build Linux & Windows binaries
+  build-linux:
+    name: Build Linux binary
     runs-on: ubuntu-latest
     steps:
       - name: Install cross-platform compile dependencies
-        run: sudo apt install mingw-w64 mingw-w64-common mingw-w64-tools mingw-w64-x86-64-dev pkg-config libssl-dev -y
+        run: sudo apt install pkg-config libssl-dev -y
       - name: Start K3S
         uses: debianmaster/actions-k3s@v1.0.1
         id: k3s
@@ -36,42 +34,19 @@ jobs:
       - name: Cargo test
         run: cargo test --verbose
       - name: Release build
-        run: rustup target add ${{ env.TARGET_LINUX }} && rustup target add ${{ env.TARGET_WINDOWS }} && cargo build -p ${{ env.RELEASED_ARTIFACT_NAME }} --release --target ${{ env.TARGET_LINUX }} && cargo build -p ${{ env.RELEASED_ARTIFACT_NAME }} --release --target ${{ env.TARGET_WINDOWS }}
-      - name: Create ${{ env.TARGET_LINUX }} and ${{ env.TARGET_LINUX }} ZIP packages
-        run: zip -j ${{ env.RELEASED_ARTIFACT_NAME }}_${{ env.TARGET_LINUX }}.zip target/${{ env.TARGET_LINUX }}/release/${{ env.RELEASED_ARTIFACT_NAME }} LICENSE && zip -j ${{ env.RELEASED_ARTIFACT_NAME }}_${{ env.TARGET_WINDOWS }}.zip target/${{ env.TARGET_WINDOWS }}/release/${{ env.RELEASED_ARTIFACT_NAME }}.exe LICENSE
+        run: rustup target add ${{ env.TARGET_LINUX }} && cargo build -p ${{ env.RELEASED_ARTIFACT_NAME }} --release --target ${{ env.TARGET_LINUX }}
+      - name: Create ${{ env.TARGET_LINUX }} ZIP package
+        run: zip -j ${{ env.RELEASED_ARTIFACT_NAME }}_${{ env.TARGET_LINUX }}.zip target/${{ env.TARGET_LINUX }}/release/${{ env.RELEASED_ARTIFACT_NAME }} LICENSE
       - name: Upload ${{ env.TARGET_LINUX }}
         uses: actions/upload-artifact@v2
         with:
           name: ${{ env.TARGET_LINUX }}
           path: ${{ env.RELEASED_ARTIFACT_NAME }}_${{ env.TARGET_LINUX }}.zip
-      - name: Upload ${{ env.TARGET_WINDOWS }}
-        uses: actions/upload-artifact@v2
-        with:
-          name: ${{ env.TARGET_WINDOWS }}
-          path: ${{ env.RELEASED_ARTIFACT_NAME }}_${{ env.TARGET_WINDOWS }}.zip
-
-  build-macos:
-    name: Build macOs binaries
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Extract current version
-        id: current-ver
-        run: |
-          VERSION=$(cat operator/Cargo.toml | sed -n "s/^version\s*=\s*\"\([0-9]*\.[0-9]*\.[0-9]*\)\"$/\1/p")
-          echo "::set-output name=version::$VERSION"
-      - name: Create ${{ env.TARGET_MACOS }} ZIP package
-        run: cargo build -p ${{ env.RELEASED_ARTIFACT_NAME }} --release --target ${{ env.TARGET_MACOS }} && zip -j ${{ env.RELEASED_ARTIFACT_NAME }}_${{ env.TARGET_MACOS }}.zip target/${{ env.TARGET_MACOS }}/release/${{ env.RELEASED_ARTIFACT_NAME }} LICENSE
-      - name: Upload ${{ env.TARGET_MACOS }}
-        uses: actions/upload-artifact@v2
-        with:
-          name: ${{ env.TARGET_MACOS }}
-          path: ${{ env.RELEASED_ARTIFACT_NAME }}_${{ env.TARGET_MACOS }}.zip
 
   gh-release:
     name: Create Release
     runs-on: ubuntu-latest
-    needs: [ build-linux-win, build-macos ]
+    needs: [ build-linux ]
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
@@ -87,21 +62,13 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: operator-${{ steps.current-ver.outputs.version }}
-          release_name: H2O K8S Operator v${{ steps.current-ver.outputs.version}}}
+          release_name: H2O K8S Operator v${{ steps.current-ver.outputs.version }}
           draft: false
           prerelease: false
       - name: Download ${{ env.TARGET_LINUX }} binary
         uses: actions/download-artifact@v2
         with:
           name: ${{ env.TARGET_LINUX }}
-      - name: Download ${{ env.TARGET_WINDOWS }} binary
-        uses: actions/download-artifact@v2
-        with:
-          name: ${{ env.TARGET_WINDOWS }}
-      - name: Download ${{ env.TARGET_MACOS }} binary
-        uses: actions/download-artifact@v2
-        with:
-          name: ${{ env.TARGET_MACOS }}
       - name: Upload ${{ env.TARGET_LINUX }} asset
         id: upload-release-asset-linux
         uses: actions/upload-release-asset@v1
@@ -111,26 +78,6 @@ jobs:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./${{ env.RELEASED_ARTIFACT_NAME }}_${{ env.TARGET_LINUX }}.zip
           asset_name: ${{ env.TARGET_LINUX }}
-          asset_content_type: application
-      - name: Upload ${{ env.TARGET_WINDOWS }} asset
-        id: upload-release-asset-win
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./${{ env.RELEASED_ARTIFACT_NAME }}_${{ env.TARGET_WINDOWS }}.zip
-          asset_name: ${{ env.TARGET_WINDOWS }}
-          asset_content_type: application
-      - name: Upload ${{ env.TARGET_MACOS }} asset
-        id: upload-release-asset-macos
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./${{ env.RELEASED_ARTIFACT_NAME }}_${{ env.TARGET_MACOS }}.zip
-          asset_name: ${{ env.TARGET_MACOS }}
           asset_content_type: application
 
   build-docker:
