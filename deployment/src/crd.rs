@@ -368,28 +368,30 @@ mod tests {
     /// resources created, as an operator is not guaranteed to be running during the execution of this test.
     #[tokio::test]
     async fn test_create() {
-        let kubeconfig_location = kubeconfig_location_panic();
-        let (client, default_namespace): (Client, String) = crate::client::from_kubeconfig(kubeconfig_location.as_path())
-            .await
-            .unwrap();
-        if super::exists(client.clone()).await {
+        for _ in 0..1000 {
+            let kubeconfig_location = kubeconfig_location_panic();
+            let (client, default_namespace): (Client, String) = crate::client::from_kubeconfig(kubeconfig_location.as_path())
+                .await
+                .unwrap();
+            if super::exists(client.clone()).await {
+                super::delete(client.clone()).await.unwrap();
+                super::wait_deleted(client.clone(), Duration::from_secs(30)).await.unwrap();
+            }
+            super::create(client.clone()).await.unwrap();
+            super::wait_crd_status(client.clone(), Duration::from_secs(30), CRDReadiness::Ready).await.unwrap();
+            assert!(super::exists(client.clone()).await);
+
+            let resources: Resources = Resources::new(1, "256Mi".to_string(), Option::None);
+            let h2o_spec: H2OSpec = H2OSpec::new(2, Option::Some("latest".to_string()), resources, Option::None);
+            let h2o: H2O = H2O::new("crd-test-deploy", h2o_spec);
+
+            let api: Api<H2O> = Api::namespaced(client.clone(), &default_namespace);
+            api.create(&PostParams::default(), &h2o).await.unwrap();
+            api.delete("crd-test-deploy", &DeleteParams::default()).await.unwrap();
+
             super::delete(client.clone()).await.unwrap();
             super::wait_deleted(client.clone(), Duration::from_secs(30)).await.unwrap();
         }
-        super::create(client.clone()).await.unwrap();
-        super::wait_crd_status(client.clone(), Duration::from_secs(30), CRDReadiness::Ready).await.unwrap();
-        assert!(super::exists(client.clone()).await);
-
-        let resources: Resources = Resources::new(1, "256Mi".to_string(), Option::None);
-        let h2o_spec: H2OSpec = H2OSpec::new(2, Option::Some("latest".to_string()), resources, Option::None);
-        let h2o: H2O = H2O::new("crd-test-deploy", h2o_spec);
-
-        let api: Api<H2O> = Api::namespaced(client.clone(), &default_namespace);
-        api.create(&PostParams::default(), &h2o).await.unwrap();
-        api.delete("crd-test-deploy", &DeleteParams::default()).await.unwrap();
-
-        super::delete(client.clone()).await.unwrap();
-        super::wait_deleted(client.clone(), Duration::from_secs(30)).await.unwrap();
     }
 
 
