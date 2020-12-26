@@ -112,7 +112,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Commit new version
-        uses: EndBug/add-and-commit@v5
+        uses: EndBug/add-and-commit@v6.2.0
         with:
           author_name: 'Operator Release'
           author_email: '<pavel.pscheidl@h2o.ai>'
