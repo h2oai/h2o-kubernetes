@@ -25,7 +25,8 @@ def has_scan_errors(digest, pid, api_key):
         if intermediate_response.status_code == 200:
             response = intermediate_response
         else:
-            time.sleep(5)
+            print("Waiting for image scanning. Intermediate response: {}".format(response.status_code))
+            time.sleep(30)
 
     # Iterate over scan results, print them and search for erroneous states
     scan_err_present = False
