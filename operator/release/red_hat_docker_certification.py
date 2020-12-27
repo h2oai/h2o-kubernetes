@@ -22,10 +22,10 @@ def has_scan_errors(digest, pid, api_key):
     response = None
     while response is None:
         intermediate_response = requests.get(url=url, headers=headers)
+        print("Intermediate response: {}".format(intermediate_response.status_code))
         if intermediate_response.status_code == 200:
             response = intermediate_response
         else:
-            print("Waiting for image scanning. Intermediate response: {}".format(response.status_code))
             time.sleep(30)
 
     # Iterate over scan results, print them and search for erroneous states
