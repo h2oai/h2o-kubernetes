@@ -229,47 +229,58 @@ pub enum CRDReadiness {
 /// `state` - Desired `CRDReadiness` state to wait for.
 pub async fn wait_crd_status(client: Client, timeout: Duration, state: CRDReadiness) -> Result<CustomResourceDefinition, Error> {
     let api: Api<CustomResourceDefinition> = Api::all(client);
+    let crd_in_desired_state = |crd: &CustomResourceDefinition| -> bool{
+        if let Some(s) = &crd.status {
+            if let Some(conds) = &s.conditions {
+                if let Some(pcond) = conds.iter().find(|c| c.type_ == "NamesAccepted") {
+                    return match state {
+                        CRDReadiness::Ready => {
+                            pcond.status == "True"
+                        }
+                        CRDReadiness::Unready => {
+                            pcond.status == "False"
+                        }
+                    };
+                }
+            }
+        }
+        return false;
+    };
+    let existing_crd = api.get(RESOURCE_NAME).await?;
+    if crd_in_desired_state(&existing_crd) {
+        return Ok(existing_crd);
+    }
     let lp = ListParams::default()
         .fields(&format!("metadata.name={}", RESOURCE_NAME))
         .timeout(timeout.as_secs() as u32);
-    let mut stream = api.watch(&lp, "0").await?.boxed();
+    let mut stream = api.watch(&lp, &existing_crd.metadata.resource_version.unwrap_or("0".to_string())).await?.boxed();
 
     while let Some(status) = stream.try_next().await? {
         if let WatchEvent::Modified(crd) = status {
-            if let Some(s) = crd.status.as_ref() {
-                if let Some(conds) = s.conditions.as_ref() {
-                    if let Some(pcond) = conds.iter().find(|c| c.type_ == "NamesAccepted") {
-                        let desired_crd_status = match state {
-                            CRDReadiness::Ready => {
-                                pcond.status == "True"
-                            }
-                            CRDReadiness::Unready => {
-                                pcond.status == "False"
-                            }
-                        };
-
-                        if desired_crd_status {
-                            return Ok(crd);
-                        }
-                    }
-                }
+            if crd_in_desired_state(&crd) {
+                return Ok(crd);
             }
         }
     }
     return Result::Err(Error::Timeout(format!("H2O Custom Resource not in ready state after {} seconds.", timeout.as_secs())));
 }
 
-pub async fn wait_deleted(client: Client, timeout: Duration) -> Result<CustomResourceDefinition, Error> {
+pub async fn wait_deleted(client: Client, timeout: Duration) -> Result<(), Error> {
     let api: Api<CustomResourceDefinition> = Api::all(client);
+    let existing_crd_result = api.get(RESOURCE_NAME).await;
+    let existing_crd: CustomResourceDefinition = match existing_crd_result {
+        Ok(crd) => { crd }
+        Err(_) => { return Ok(()); }
+    };
     let lp = ListParams::default()
         .fields(&format!("metadata.name={}", RESOURCE_NAME))
         .timeout(timeout.as_secs() as u32);
-    let mut stream = api.watch(&lp, "0").await?.boxed();
+    let mut stream = api.watch(&lp, &existing_crd.metadata.resource_version.unwrap_or("0".to_string())).await?.boxed();
 
     while let Some(status) = stream.try_next().await? {
         match status {
-            WatchEvent::Deleted(crd) => {
-                return Ok(crd);
+            WatchEvent::Deleted(_) => {
+                return Ok(());
             }
             _ => {}
         }
@@ -368,30 +379,28 @@ mod tests {
     /// resources created, as an operator is not guaranteed to be running during the execution of this test.
     #[tokio::test]
     async fn test_create() {
-        for _ in 0..1000 {
-            let kubeconfig_location = kubeconfig_location_panic();
-            let (client, default_namespace): (Client, String) = crate::client::from_kubeconfig(kubeconfig_location.as_path())
-                .await
-                .unwrap();
-            if super::exists(client.clone()).await {
-                super::delete(client.clone()).await.unwrap();
-                super::wait_deleted(client.clone(), Duration::from_secs(30)).await.unwrap();
-            }
-            super::create(client.clone()).await.unwrap();
-            super::wait_crd_status(client.clone(), Duration::from_secs(30), CRDReadiness::Ready).await.unwrap();
-            assert!(super::exists(client.clone()).await);
-
-            let resources: Resources = Resources::new(1, "256Mi".to_string(), Option::None);
-            let h2o_spec: H2OSpec = H2OSpec::new(2, Option::Some("latest".to_string()), resources, Option::None);
-            let h2o: H2O = H2O::new("crd-test-deploy", h2o_spec);
-
-            let api: Api<H2O> = Api::namespaced(client.clone(), &default_namespace);
-            api.create(&PostParams::default(), &h2o).await.unwrap();
-            api.delete("crd-test-deploy", &DeleteParams::default()).await.unwrap();
-
+        let kubeconfig_location = kubeconfig_location_panic();
+        let (client, default_namespace): (Client, String) = crate::client::from_kubeconfig(kubeconfig_location.as_path())
+            .await
+            .unwrap();
+        if super::exists(client.clone()).await {
             super::delete(client.clone()).await.unwrap();
             super::wait_deleted(client.clone(), Duration::from_secs(30)).await.unwrap();
         }
+        super::create(client.clone()).await.unwrap();
+        super::wait_crd_status(client.clone(), Duration::from_secs(30), CRDReadiness::Ready).await.unwrap();
+        assert!(super::exists(client.clone()).await);
+
+        let resources: Resources = Resources::new(1, "256Mi".to_string(), Option::None);
+        let h2o_spec: H2OSpec = H2OSpec::new(2, Option::Some("latest".to_string()), resources, Option::None);
+        let h2o: H2O = H2O::new("crd-test-deploy", h2o_spec);
+
+        let api: Api<H2O> = Api::namespaced(client.clone(), &default_namespace);
+        api.create(&PostParams::default(), &h2o).await.unwrap();
+        api.delete("crd-test-deploy", &DeleteParams::default()).await.unwrap();
+
+        super::delete(client.clone()).await.unwrap();
+        super::wait_deleted(client.clone(), Duration::from_secs(30)).await.unwrap();
     }
 
 
