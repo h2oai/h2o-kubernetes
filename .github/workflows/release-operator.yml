@@ -26,7 +26,7 @@ jobs:
         uses: debianmaster/actions-k3s@v1.0.1
         id: k3s
         with:
-          - version: 'latest'
+          version: 'latest'
       - uses: actions/checkout@v2
       - name: Extract current version
         id: current-ver
