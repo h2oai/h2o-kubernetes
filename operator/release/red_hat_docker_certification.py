@@ -25,9 +25,6 @@ def has_scan_errors(digest, pid, api_key):
         print("Intermediate response: {}".format(intermediate_response.status_code))
         if intermediate_response.status_code == 200:
             response = intermediate_response
-        elif intermediate_response.status_code == 404:
-            print("Docker image with digest {} not found.".format(digest))
-            return True
         else:
             time.sleep(30)
 
