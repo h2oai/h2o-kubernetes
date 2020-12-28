@@ -59,7 +59,8 @@ def publish(digest, pid, api_key, tag):
 
     response = requests.post(url, headers=headers)
 
-    if response.status_code != 201:
+    # Officiaal API documentation only declares 201, yet HTTP 200 may be returned as well
+    if response.status_code != 201 or response.status_code != 200:
         print("Unable to publish, invalid status code: {}.".format(response.status_code))
         print(response)
         print(response.content)
