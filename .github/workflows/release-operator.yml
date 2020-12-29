@@ -67,7 +67,7 @@ jobs:
           python operator/release/red_hat_docker_certification.py --api_key ${{ secrets.RED_HAT_CONNECT_API_KEY }} --pid ${{ secrets.OPERATOR_RED_HAT_PID }} --tag ${{ steps.current-ver.outputs.version }} $DIGEST
           CREATED_DATE=$(date --utc +%FT%T%Z)
           sed -i "s/<created-date>/$CREATED_DATE/g" operator/bundle/manifests/h2o.clusterserviceversion.yaml
-          docker docker build -t ${{ secrets.OPERATOR_BUNDLE_RED_HAT_SCAN_TAG_PREFIX }}${{ env.OPERATOR_NAME }}-bundle:${{steps.current-ver.outputs.version}} -f operator/docker/Dockerfile-operator-bundle . --no-cache
+          docker build -t ${{ secrets.OPERATOR_BUNDLE_RED_HAT_SCAN_TAG_PREFIX }}${{ env.OPERATOR_NAME }}-bundle:${{steps.current-ver.outputs.version}} -f operator/docker/Dockerfile-operator-bundle . --no-cache
           DIGEST=$(docker push ${{ secrets.OPERATOR_BUNDLE_RED_HAT_SCAN_TAG_PREFIX }}${{ env.OPERATOR_NAME }}-bundle:${{ steps.current-ver.outputs.version }} | sed -n 's/.*\(sha256:[a-zA-Z0-9]*\).*$/\1/p')
           echo $DIGEST
           python operator/release/red_hat_docker_certification.py --api_key ${{ secrets.RED_HAT_CONNECT_API_KEY }} --pid ${{ secrets.OPERATOR_BUNDLE_RED_HAT_PID }} --tag ${{ steps.current-ver.outputs.version }} $DIGEST
