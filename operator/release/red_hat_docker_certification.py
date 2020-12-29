@@ -27,9 +27,10 @@ def has_scan_errors(digest, pid, api_key):
             try:
                 intermediate_response.json()["data"]["results"]
                 response = intermediate_response
-            except KeyError:
+            except (KeyError, TypeError):
                 # Do effectively nothing if image check results are missing in the response
                 # There are various states the Red Hat API responses with 200, yet the payload may differ
+                # causing KeyError or TypeError whent trying to access scan results
                 response = None
         else:
             time.sleep(30)
