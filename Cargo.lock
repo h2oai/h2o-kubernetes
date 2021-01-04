@@ -842,9 +842,9 @@ dependencies = [
 
 [[package]]
 name = "kube"
-version = "0.44.0"
+version = "0.46.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6585da8efec1a3b5df0fb12b357e2f3921cd7436a6d10f1ea06377d4cbd85032"
+checksum = "cf30e1baad09e4ad4554d9729a7d6299b450c1c79d08768ca02d60738a6fa247"
 dependencies = [
  "Inflector",
  "base64 0.12.3",
@@ -874,9 +874,9 @@ dependencies = [
 
 [[package]]
 name = "kube-derive"
-version = "0.44.0"
+version = "0.46.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0101a3777e606d7204aa830a9affcb328767912e406932f53704c6efbcf9afa4"
+checksum = "9874e815c5166b50262fb08a9b61bbf5ad7b4c9e40ad6b4393558d62ca7bb593"
 dependencies = [
  "Inflector",
  "proc-macro2",
@@ -887,9 +887,9 @@ dependencies = [
 
 [[package]]
 name = "kube-runtime"
-version = "0.44.0"
+version = "0.46.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b01bed1a72a06d987a98d28b49e70c9e43f600720348a48d48291d94ba003f6"
+checksum = "cc828e434c330d3da52e5269a74fc52ff3a0bb0778da83ff53303e44a4e20a1e"
 dependencies = [
  "dashmap",
  "derivative",
@@ -1936,9 +1936,9 @@ checksum = "53953d2d3a5ad81d9f844a32f14ebb121f50b650cd59d0ee2a07cf13c617efed"
 
 [[package]]
 name = "tokio"
-version = "0.2.22"
+version = "0.2.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d34ca54d84bf2b5b4d7d31e901a8464f7b60ac145a284fba25ceb801f2ddccd"
+checksum = "099837d3464c16a808060bb3f02263b412f6fafcb5d01c533d309985fbeebe48"
 dependencies = [
  "bytes",
  "fnv",
@@ -1959,9 +1959,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-macros"
-version = "0.2.5"
+version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0c3acc6aa564495a0f2e1d59fab677cd7f81a19994cfc7f3ad0e64301560389"
+checksum = "e44da00bfc73a25f814cd8d7e57a68a5c31b74b3152a0a1d1f590c97ed06265a"
 dependencies = [
  "proc-macro2",
  "quote",
