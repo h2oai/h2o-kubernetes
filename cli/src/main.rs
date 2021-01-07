@@ -33,7 +33,7 @@ mod cli;
 /// In Rust, the asynchronous code is runtime-agnostic, this means the user might pick any runtime available.
 /// As the `kube` crate already uses a commonly used crate named [Tokio](https://tokio.rs/), the choice
 /// is to Tokio as well. It's multi-threaded executor is chosen for maximum performance and parallelism, even though
-/// not really needed at the moment. This is marked by choosing the `rt-threaded` feature in this crate's `Cargo.tml`.
+/// not really needed at the moment. This is marked by choosing the `rt-multi-thread` feature in this crate's `Cargo.tml`.
 #[tokio::main]
 async fn main() {
     let command: Command = match cli::get_command() {
