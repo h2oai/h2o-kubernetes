@@ -16,7 +16,8 @@ serde_json = "~1.0"
 tokio = { version = "~1.0", features = ["macros", "rt-multi-thread"] }
 log = "0.4.11"
 thiserror = "~1.0"
-schemars = "*"
+schemars = "~0.8"
+either = "~1.6"
 
 [dev-dependencies]
 tests_common = { path = "../tests_common" }

@@ -161,7 +161,7 @@ pub async fn create(
     } else {
         // At least one of the above has to be specified - H2O version that serves as a Docker image tag,
         // or a full definition of custom image.
-        return Err(Error::UserError("Unable to create H2O statefulset. Either H2O version or a complete custom image specification must be provided. None obtained."
+        return Err(Error::UserError("Unable to create H2O statefulset. Either H2O version or a complete custom image specification must be provided. None provided."
             .to_string()));
     }
 
