@@ -277,6 +277,7 @@ dependencies = [
 name = "deployment"
 version = "0.1.0"
 dependencies = [
+ "either",
  "futures",
  "k8s-openapi",
  "kube",
@@ -609,6 +610,7 @@ dependencies = [
  "kube-derive",
  "kube-runtime",
  "log",
+ "reqwest",
  "serde",
  "serde_json",
  "serde_yaml",

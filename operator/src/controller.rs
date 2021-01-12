@@ -229,6 +229,7 @@ async fn delete_h2o_deployment(
 
     let statefulset_future = deployment::statefulset::delete(data.client.clone(), namespace, name);
     let service_future = deployment::headless_service::delete(data.client.clone(), namespace, name);
+    // TODO: Wait for resources to be deleted before exitting.
 
     tokio::try_join!(statefulset_future, service_future)?;
     deployment::finalizer::remove_finalizer(data.client.clone(), name, namespace).await?;

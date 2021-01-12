@@ -5,8 +5,9 @@ extern crate thiserror;
 
 use kube::Client;
 use kube::Error as KubeError;
-use serde_yaml::Error as YamlError;
+use kube_runtime::watcher::Error as WatcherError;
 use serde_json::Error as JsonError;
+use serde_yaml::Error as YamlError;
 use thiserror::Error as ThisError;
 
 use crate::crd::H2OSpec;
@@ -17,6 +18,7 @@ pub mod ingress;
 pub mod headless_service;
 pub mod statefulset;
 pub mod client;
+pub mod pod;
 
 /// Error during handling Kubernetes cluster-related requests.
 #[derive(ThisError, Debug)]
@@ -32,24 +34,34 @@ pub enum Error {
     Timeout(String),
     #[error("Failed to serialize template. Reason: {0}")]
     TemplateSerializationError(String),
+    #[error("Resource watch failed. Reason: {0}")]
+    WatcherError(WatcherError),
 }
-impl From<KubeError> for Error{
+
+impl From<KubeError> for Error {
     fn from(kube_error: KubeError) -> Self {
         Error::KubeError(kube_error)
     }
 }
 
-impl From<YamlError> for Error{
-    fn from(yaml_error : YamlError) -> Self {
+impl From<YamlError> for Error {
+    fn from(yaml_error: YamlError) -> Self {
         Error::TemplateSerializationError(yaml_error.to_string())
     }
 }
 
-impl From<JsonError> for Error{
+impl From<JsonError> for Error {
     fn from(json_error: JsonError) -> Self {
         Error::TemplateSerializationError(json_error.to_string())
     }
 }
+
+impl From<WatcherError> for Error {
+    fn from(watcher_error: WatcherError) -> Self {
+        Error::WatcherError(watcher_error)
+    }
+}
+
 
 /// Creates all the resources necessary to start an H2O cluster according to specification.
 /// Only the resources necessary for the H2O cluster to be up and running are created (exhaustive list):
