@@ -16,6 +16,7 @@ pub mod crd;
 pub mod finalizer;
 pub mod ingress;
 pub mod headless_service;
+pub mod service;
 pub mod statefulset;
 pub mod client;
 pub mod pod;

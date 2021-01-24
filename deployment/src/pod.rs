@@ -1,15 +1,16 @@
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use futures::{StreamExt, TryStreamExt};
 use k8s_openapi::api::core::v1::Pod;
 use kube::{Api, Client};
-use kube::api::{DeleteParams, PostParams, ListParams, Meta};
+use kube::api::{DeleteParams, ListParams, Meta, PostParams};
 use kube::client::Status;
-use log::{debug};
+use kube_runtime::watcher::Event;
+use log::debug;
 
 use crate::crd::H2OSpec;
 use crate::Error;
-use kube_runtime::watcher::Event;
-use std::collections::HashMap;
-use std::sync::Arc;
 
 const POD_TEMPLATE: &str = r#"
 apiVersion: v1
@@ -151,40 +152,40 @@ pub async fn create_pods(client: Client, h2o_spec: &H2OSpec, deployment_name: &s
     // Pods are created concurrently (or directly in parallel, as long as the chosen runtime is multi-threaded one) in a similar way to StatefulSet's parallel pod management.
     // It might take a while to spawn a pod. Waiting for previous pod in order to spawn the next one prolongs the waiting times.
     // Especially for large clusters, this ensures fastest startup time possible.
-    let pod_creation_results: Vec<Result<Pod, Error>> = futures::stream::iter(0..h2o_spec.nodes).map(|pod_number| {
-        let pod_name: String = format!("{}-{}", deployment_name, pod_number);
-        let h2o_pod: Pod = h2o_pod(&pod_name, deployment_name, namespace,
-                                   docker_image, command, h2o_spec.nodes, &h2o_spec.resources.memory,
-                                   h2o_spec.resources.cpu,
-        ).unwrap();
-        create_pod(h2o_pod, &api, &post_params)
-    }).buffer_unordered(h2o_spec.nodes as usize) // Order of invocation and completion is irrelevant.
+    let pod_creation_results: Vec<Result<Pod, Error>> = futures::stream::iter(0..h2o_spec.nodes)
+        .map(|pod_number| {
+            let pod_name: String = format!("{}-{}", deployment_name, pod_number);
+            let h2o_pod: Pod = h2o_pod(&pod_name, deployment_name, namespace,
+                                       docker_image, command, h2o_spec.nodes, &h2o_spec.resources.memory,
+                                       h2o_spec.resources.cpu,
+            ).unwrap();
+            create_pod(h2o_pod, &api, &post_params)
+        }).buffer_unordered(h2o_spec.nodes as usize) // Order of invocation and completion is irrelevant.
         .map_err(Error::from)
         .collect()
         .await;
 
     // Filter out pods that were not deployed successfully
     let erroneous_pods_count: usize = pod_creation_results.iter()
-        .filter(|res|{
+        .filter(|res| {
             res.is_err()
         })
         .count();
 
     // If any pod creation ended up with an error, roll back the successfully deployed ones and return errors gathered.
     if erroneous_pods_count > 0 {
-
         let successfully_deployed_pods: Vec<&Pod> = pod_creation_results.iter()
-            .filter_map(|res|{
+            .filter_map(|res| {
                 res.as_ref().ok()
             })
             .collect();
 
         let delete_params: Arc<DeleteParams> = Arc::new(DeleteParams::default());
-        let deployed_pods_count: usize = successfully_deployed_pods.len();
-        let _: Vec<Result<(), Error>> = futures::stream::iter(successfully_deployed_pods.iter())
-            .map(|pod| {
+        let _: Vec<Result<(), Error>> = futures::stream::iter(0..successfully_deployed_pods.len())
+            .map(|idx| {
+                let pod = successfully_deployed_pods[idx];
                 delete_pod(pod.metadata.name.as_ref().expect("Pods are supposed to have names."), &api, &delete_params)
-            }).buffer_unordered(deployed_pods_count)
+            }).buffer_unordered(successfully_deployed_pods.len())
             .collect()
             .await;
 
@@ -225,7 +226,7 @@ async fn delete_pod(pod_name: &str, api: &Api<Pod>, params: &DeleteParams) -> Re
 }
 
 pub async fn wait_pods_created<F>(client: Client, pod_label: &str, namespace: &str, expected_count: usize, pod_status_check: F) -> Vec<Pod>
-where F: Fn(&Pod) -> bool{
+    where F: Fn(&Pod) -> bool {
     let api: Api<Pod> = Api::<Pod>::namespaced(client.clone(), namespace);
     let list_params: ListParams = ListParams::default()
         .labels(&format!("app={}", pod_label));
@@ -301,13 +302,13 @@ async fn wait_pods_deleted(client: Client, name: &str, namespace: &str) -> Resul
 
 #[cfg(test)]
 mod tests {
+    use k8s_openapi::api::core::v1::Pod;
     use kube::Client;
 
     use tests_common::kubeconfig_location_panic;
 
     use crate::crd::{H2OSpec, Resources};
     use crate::pod::wait_pods_created;
-    use k8s_openapi::api::core::v1::Pod;
 
     #[tokio::test]
     async fn test_create_pods() {
@@ -330,13 +331,14 @@ mod tests {
 
         // Wait for all the pods to be created and check their count
         let verified_pods: Vec<Pod> = wait_pods_created(client.clone(), h2o_name, &namespace, node_count,
-        |pod|{pod.metadata.creation_timestamp.is_some()}).await;
+                                                        |pod| { pod.metadata.creation_timestamp.is_some() }).await;
         assert_eq!(h2o_spec.nodes as usize, verified_pods.len());
 
         let deleted_pod_names: Vec<&str> = created_pods.iter()
-            .map(|pod| {pod.metadata.name.as_ref()
-                .expect("Pod's name is expected to be mandatory.")
-                .as_ref()
+            .map(|pod| {
+                pod.metadata.name.as_ref()
+                    .expect("Pod's name is expected to be mandatory.")
+                    .as_ref()
             })
             .collect();
 
