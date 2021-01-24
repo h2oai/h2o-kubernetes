@@ -1,8 +1,7 @@
 use k8s_openapi::api::core::v1::Service;
-use kube::{Api, Client};
-use kube::api::{DeleteParams, PostParams};
-
 use crate::Error;
+use kube::{Client, Api};
+use kube::api::{PostParams, DeleteParams};
 
 const HEADLESS_SERVICE_TEMPLATE: &str = r#"
 apiVersion: v1
@@ -11,12 +10,11 @@ metadata:
   name: <name>
   namespace: <namespace>
   labels:
-    app: <name>
+    app: <pod_label>
 spec:
   type: ClusterIP
-  clusterIP: None
   selector:
-    app: <name>
+    h2o_leader_node_pod: <name>
   ports:
   - protocol: TCP
     port: 80
@@ -40,10 +38,11 @@ spec:
 /// )
 /// .expect("Could not create service from YAML template.");
 /// ```
-pub fn h2o_service(name: &str, namespace: &str) -> Result<Service, Error> {
+pub fn h2o_service(name: &str, namespace: &str, pod_label: &str) -> Result<Service, Error> {
     let service_definition: String = HEADLESS_SERVICE_TEMPLATE
         .replace("<name>", name)
-        .replace("<namespace>", namespace);
+        .replace("<namespace>", namespace)
+        .replace("<pod_label>", pod_label);
 
     let service: Service = serde_yaml::from_str(&service_definition)?;
     return Ok(service);
@@ -67,9 +66,9 @@ pub fn h2o_service(name: &str, namespace: &str) -> Result<Service, Error> {
 /// let service: Service = deployment::headless_service::create(client, &namespace, "any-name").await.unwrap();
 /// }
 /// ```
-pub async fn create(client: Client, namespace: &str, name: &str) -> Result<Service, Error> {
+pub async fn create(client: Client, namespace: &str, name: &str, pod_label: &str) -> Result<Service, Error> {
     let service_api: Api<Service> = Api::namespaced(client.clone(), namespace);
-    let service: Service = h2o_service(name, namespace)?;
+    let service: Service = h2o_service(name, namespace, pod_label)?;
     let created_service: Service =  service_api.create(&PostParams::default(), &service).await?;
     Ok(created_service)
 }
@@ -90,7 +89,7 @@ pub async fn create(client: Client, namespace: &str, name: &str) -> Result<Servi
 /// async fn main() {
 /// use kube::Client;
 /// let (client, namespace): (Client, String) = deployment::client::try_default().await.unwrap();
-/// deployment::headless_service::delete(client, &namespace, "any-name").await.unwrap();
+/// deployment::service::delete(client, &namespace, "any-name").await.unwrap();
 /// }
 /// ```
 pub async fn delete(client: Client, namespace: &str, name: &str) -> Result<(), Error> {

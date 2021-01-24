@@ -9,6 +9,7 @@ use log::{error, info};
 
 use deployment::crd::H2O;
 use deployment::Error;
+use crate::clustering;
 
 /// Creates and runs an instance of `kube_runtime::Controller` internally, endlessly waiting for incoming events
 /// on CRDs handled by this operator. Unless there is an error, this function never returns.
@@ -189,13 +190,10 @@ async fn create_h2o_deployment(
     let name: String = h2o.metadata.name.clone()
         .ok_or(Error::UserError("Unable to create H2O deployment. No H2O name provided.".to_string()))?;
 
-    let deploy_future =
-        deployment::create_h2o_cluster(data.client.clone(), &h2o.spec, &data.default_namespace, &name);
-    let add_finalizer_future =
-        deployment::finalizer::add_finalizer(data.client.clone(), &data.default_namespace, &name);
+    deployment::pod::create_pods(data.client.clone(), &h2o.spec, &name, &data.default_namespace).await.unwrap();
+    clustering::cluster_pods(data.client.clone(), &data.default_namespace, &name, h2o.spec.nodes as usize).await; // TODO : fix expected pod size
 
-    tokio::try_join!(deploy_future, add_finalizer_future)?;
-    deployment::crd::add_empty_status(data.client.clone(), &name, &data.default_namespace).await.unwrap();
+    deployment::finalizer::add_finalizer(data.client.clone(), &data.default_namespace, &name).await;
 
     info!("H2O '{}' successfully deployed.", &name);
     return Ok(ReconcilerAction {
