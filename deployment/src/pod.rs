@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use futures::{StreamExt, TryStreamExt};
-use k8s_openapi::api::core::v1::Pod;
+use k8s_openapi::api::core::v1::{Pod, PersistentVolume};
 use kube::{Api, Client};
 use kube::api::{DeleteParams, ListParams, Meta, PostParams};
 use kube::client::Status;
@@ -12,7 +12,9 @@ use log::debug;
 use crate::crd::H2OSpec;
 use crate::Error;
 
-const POD_TEMPLATE: &str = r#"
+pub const H2O_DEFAULT_PORT: u16 = 65356;
+
+const NON_ASSISTED_POD_TEMPLATE: &str = r#"
 apiVersion: v1
 kind: Pod
 metadata:
@@ -67,8 +69,8 @@ spec:
 ///
 /// ```no_run
 /// use k8s_openapi::api::core::v1::Pod;
-/// use deployment::pod::h2o_pod;
-/// let pod: Pod = h2o_pod(
+/// use deployment::pod::h2o_non_assisted_pod;
+/// let pod: Pod = h2o_non_assisted_pod(
 /// "some-pod-name",
 /// "some-h2o-deployment-name",
 /// "default",
@@ -80,7 +82,7 @@ spec:
 /// )
 /// .expect("Could not create H2O Pod from YAML template");
 /// ```
-pub fn h2o_pod(
+pub fn h2o_non_assisted_pod(
     name: &str,
     deployment_label: &str,
     namespace: &str,
@@ -98,7 +100,7 @@ pub fn h2o_pod(
         }
     }
 
-    let pod_yaml_definition: String = POD_TEMPLATE
+    let pod_yaml_definition: String = NON_ASSISTED_POD_TEMPLATE
         .replace("<name>", name)
         .replace("<deployment-label>", deployment_label)
         .replace("<namespace>", namespace)
@@ -113,6 +115,37 @@ pub fn h2o_pod(
     let stateful_set: Pod = serde_yaml::from_str(&pod_yaml_definition)?;
     return Ok(stateful_set);
 }
+
+
+const ASSISTED_POD_TEMPLATE: &str = r#"
+apiVersion: v1
+kind: Pod
+metadata:
+  name: <name>
+  namespace: <namespace>
+  labels:
+    app: <deployment-label>
+spec:
+  containers:
+    - name: <name>
+      image: '<h2o-image>'
+<command-line>
+      ports:
+        - containerPort: 54321
+          protocol: TCP
+      resources:
+        limits:
+          cpu: '<num-cpu>'
+          memory: <memory>
+        requests:
+          cpu: '<num-cpu>'
+          memory: <memory>
+      env:
+      - name: H2O_ASSISTED_CLUSTERING_API_PORT
+        value: '8081'
+      - name: H2O_ASSISTED_CLUSTERING_REST
+        value: 'True'
+"#;
 
 pub async fn create_pods(client: Client, h2o_spec: &H2OSpec, deployment_name: &str, namespace: &str) -> Result<Vec<Pod>, Vec<Error>> {
     let api: Api<Pod> = Api::namespaced(client, namespace);
@@ -155,7 +188,7 @@ pub async fn create_pods(client: Client, h2o_spec: &H2OSpec, deployment_name: &s
     let pod_creation_results: Vec<Result<Pod, Error>> = futures::stream::iter(0..h2o_spec.nodes)
         .map(|pod_number| {
             let pod_name: String = format!("{}-{}", deployment_name, pod_number);
-            let h2o_pod: Pod = h2o_pod(&pod_name, deployment_name, namespace,
+            let h2o_pod: Pod = h2o_non_assisted_pod(&pod_name, deployment_name, namespace,
                                        docker_image, command, h2o_spec.nodes, &h2o_spec.resources.memory,
                                        h2o_spec.resources.cpu,
             ).unwrap();

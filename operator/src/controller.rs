@@ -91,8 +91,8 @@ enum ControllerAction {
     Create,
     /// Delete resources of an existing H2O Cluster
     Delete,
-    /// Updating existing H2O deployment is not supported - once H2O is clustered, it is immutable. Any events requiring on actions.
-    Noop,
+    /// Verify current cluster status. Updating existing H2O deployment is not supported - once H2O is clustered, it is immutable.
+    Verify,
 }
 
 /// Reconciliation logic router, called by the controller once per each event.
@@ -112,7 +112,7 @@ async fn reconcile(h2o: H2O, context: Context<ContextData>) -> Result<Reconciler
         ControllerAction::Delete => {
             delete_h2o_deployment(&h2o, &context).await?;
         }
-        ControllerAction::Noop => {
+        ControllerAction::Verify => {
             info!("No action taken for:\n{:?}", &h2o); // Log the whole incoming H2O description
         }
     }
@@ -157,7 +157,7 @@ fn examine_h2o_for_actions(h2o: &H2O) -> ControllerAction {
     } else if !has_finalizer && !has_deletion_timestamp {
         ControllerAction::Create
     } else {
-        ControllerAction::Noop
+        ControllerAction::Verify
     };
 }
 
@@ -182,12 +182,11 @@ async fn create_h2o_deployment(
 
     deployment::pod::create_pods(data.client.clone(), &h2o.spec, &name, &data.default_namespace).await.unwrap();
     clustering::cluster_pods(data.client.clone(), &data.default_namespace, &name, h2o.spec.nodes as usize).await; // TODO : fix expected pod size
-
-    deployment::finalizer::add_finalizer(data.client.clone(), &data.default_namespace, &name).await;
+    deployment::finalizer::add_finalizer(data.client.clone(), &data.default_namespace, &name).await.unwrap();
 
     info!("Deployed H2O '{}'.", &name);
     return Ok(ReconcilerAction {
-        requeue_after: Option::None,
+        requeue_after: Option::Some(Duration::from_secs(10)),
     });
 }
 

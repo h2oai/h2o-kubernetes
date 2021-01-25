@@ -12,6 +12,7 @@ use deployment::Error;
 
 mod controller;
 mod clustering;
+mod verification;
 
 /// Entrypoint to H2O Open Source Kubernetes operator executable. This operator acts upon H2O-related
 /// Custom Resource Definitions (CRDs), handling their state changes, creation and deletion.
