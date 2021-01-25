@@ -131,7 +131,7 @@ async fn reconcile(h2o: H2O, context: Context<ContextData>) -> Result<Reconciler
 ///# Examples
 /// As this function is intended to be called by the controller only, there are no examples.
 fn error_policy(error: &Error, _context: Context<ContextData>) -> ReconcilerAction {
-    error!("Reconciliation error:\n{}", error);
+    error!("Reconciliation error:\n{:?}", error);
     ReconcilerAction {
         requeue_after: Some(Duration::from_secs(10)),
     }
