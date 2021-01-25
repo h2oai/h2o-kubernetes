@@ -72,7 +72,7 @@ async fn send_flatfile(pod_ips: &[String], http_client: &HyperClient<HttpConnect
             .method(Method::POST)
             .uri(format!("http://{}:8080/clustering/flatfile", pod_ip))
             .header(CONTENT_TYPE, "text/plain")
-            .body(Body::from("")).unwrap(); // TODO: remove unwrap
+            .body(Body::from("")).unwrap(); // TODO: remove unwrap and send flatfile
         http_client.request(request)
     }).buffer_unordered(pod_ips.len())
         .map(|result| {
@@ -82,6 +82,16 @@ async fn send_flatfile(pod_ips: &[String], http_client: &HyperClient<HttpConnect
             futures::future::ready(a && b)
         })
         .await
+}
+
+fn create_flatfile(pod_ipds: &[IpAddr]) -> String {
+    pod_ipds.iter()
+        .map(|pod_ip| {
+            let pod_socket_addr = SocketAddr::new(pod_ip.clone(), deployment::pod::H2O_DEFAULT_PORT);
+            pod_socket_addr.to_string()
+        })
+        .collect::<Vec<String>>()
+        .join("\n")
 }
 
 #[derive(Serialize, Deserialize)]
