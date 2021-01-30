@@ -30,6 +30,55 @@ spec:
 After creating the resource by using`kubectl apply -f h2o.yaml`, all the necessary H2O resources are created.
 Deletion is as simple as `kubectl delete h2o h2o-test`.
 
+## Deployment
+The operator is not officially released as a Docker container yet, nor is it available on OperatorHub or as a Red Hat Certified operator. In order to use it, a Docker container must be built first.
+
+```shell
+docker build --build-arg H2O_VERSION=custom -t h2o-operator:custom -f docker/public/Dockerfile-h2o-release build/
+```
+Once the Dockerfile is built, make sure to push it to a proper repository reachable by the Kubernetes cluster (e.g. [Docker Hub](hub.docker.com)).
+
+Before the actual image is deployed, the H2O `CustomResourceDefinition` must be created in the Kubernetes cluster. The definition is to be found
+in [bundle/manifests/h2o.crd.yaml](bundle/manifests/h2o.crd.yaml). Download it and do `kubectl apply -f h2o.crd.yaml`. Such an operation requires
+user with the following permissions:
+
+```yaml
+- apiGroups:
+    - "apiextensions.k8s.io"
+  resources:
+    - customresourcedefinitions
+  verbs:
+    - create
+```
+
+Once the H2O CRD is deployed, the operator itself may also be deployed. A simple `Deployment` with exactly one instance of the pod
+with H2O operator inside will do. In case of failures, the pod is restarted and H2O-related events are handled.
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: h2o-operator
+  labels:
+    app: h2o-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: h2o-operator
+  template:
+    metadata:
+      labels:
+        app: h2o-operator
+    spec:
+      containers:
+      - name: h2o-operator
+        image: repository/h2o-operator:custom # Replace with a real docker image specification
+        imagePullPolicy: Always # Set to IfNotPresent if the image with the very same tag never changes
+```
+
+The operator requires specific permissions to run, too. Make sure to use a Kubernetes `User` or create a dedicated `ServiceAccount`
+with rights listed in the [ClusterRole definition file](tests/permissions/cluster_role.yaml). This set of permissions is used to test the operator itself.
+
 ## Building, testing and running
 
 Refer to the [contributing guide](../CONTRIBUTING.md) for detailed instructions on how to build and develop this project.
