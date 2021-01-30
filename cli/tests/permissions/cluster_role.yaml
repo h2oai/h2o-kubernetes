@@ -6,10 +6,7 @@ rules:
     - apiGroups:
       - ""
       resources:
-      - pods
       - services
-      - events
-      - configmaps
       verbs:
       - create
       - delete

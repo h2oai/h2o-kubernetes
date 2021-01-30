@@ -6,10 +6,7 @@ rules:
     - apiGroups:
       - ""
       resources:
-      - pods
       - services
-      - events
-      - configmaps
       verbs:
       - create
       - delete
@@ -39,7 +36,7 @@ rules:
     - apiGroups:
       - "networking.k8s.io"
       resources:
-        - ingresses
+      - ingresses
       verbs:
       - create
       - delete
