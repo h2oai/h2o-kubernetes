@@ -44,12 +44,18 @@ jobs:
           # for the given module.
           #Test CLI module
           export KUBECONFIG=$(pwd)/kubeconfigs-generated/kubeconfig-h2o-cli-default.yaml
-          cargo test cli --verbose
+          cd cli
+          cargo test --verbose
+          cd ../
 
           # Test DEPLOYMENT module
           export KUBECONFIG=$(pwd)/kubeconfigs-generated/kubeconfig-h2o-deployment-default.yaml
-          cargo test deployment --verbose
+          cd deployment
+          cargo test --verbose
+          cd ../
 
           # Test OPERATOR module
           export KUBECONFIG=$(pwd)/kubeconfigs-generated/kubeconfig-h2o-operator-default.yaml
-          cargo test operator --verbose
+          cd operator
+          cargo test --verbose
+          cd ../
