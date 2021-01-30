@@ -21,23 +21,35 @@ jobs:
       - uses: actions/checkout@v2
       - name: Run tests
         run: |
+          # 🄿🅁🄴🄿🄰🅁🄰🅃🄸🄾🄽🅂
+          # debianmaster/actions-k3s sets owner of the Kubeconfig output to a different user.
+          # To generate kubeconfigs for specific service accounts, current user must have read rights to the cluster-admin kubeconfig folder
           sudo chown $(id -u):$(id -g) /tmp/output/
-          # Create cluster role with permissions for CLI
+
+          # Create cluster role and a service account with permissions  and related kubeconfig for CLI module
           kubectl apply -f cli/tests/permissions/cluster_role.yaml
           bash tests_common/k8s_cluster_setup/kubeconfig.sh h2o-cli default
-          # Create cluster role with permissions for deployment
+
+          # Create cluster role and a service account with permissions and related kubeconfig for DEPLOYMENT MODULE
           kubectl apply -f deployment/tests/permissions/cluster_role.yaml
           bash tests_common/k8s_cluster_setup/kubeconfig.sh h2o-deployment default
-          # Create cluster role with permissions for operator
+
+          # Create cluster role and a service with permissions  and related kubeconfig for OPERATOR
           kubectl apply -f operator/tests/permissions/cluster_role.yaml
           kubectl apply -f operator/bundle/manifests/h2o.crd.yaml
           bash tests_common/k8s_cluster_setup/kubeconfig.sh h2o-operator default
 
+          # 🅃🄴🅂🅃🅂
+          # Each module is tested with kubeconfig reflecting service account with just enough permissions
+          # for the given module.
+          #Test CLI module
           export KUBECONFIG=$(pwd)/kubeconfigs-generated/kubeconfig-h2o-cli-default.yaml
           cargo test cli --verbose
 
+          # Test DEPLOYMENT module
           export KUBECONFIG=$(pwd)/kubeconfigs-generated/kubeconfig-h2o-deployment-default.yaml
           cargo test deployment --verbose
 
+          # Test OPERATOR module
           export KUBECONFIG=$(pwd)/kubeconfigs-generated/kubeconfig-h2o-operator-default.yaml
           cargo test operator --verbose
