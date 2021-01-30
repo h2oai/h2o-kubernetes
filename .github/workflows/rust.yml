@@ -20,4 +20,24 @@ jobs:
           version: 'latest'
       - uses: actions/checkout@v2
       - name: Run tests
-        run: cargo test --verbose
+        run: |
+          sudo chown $(id -u):$(id -g) /tmp/output/
+          # Create cluster role with permissions for CLI
+          kubectl apply -f cli/tests/permissions/cluster_role.yaml
+          bash tests_common/k8s_cluster_setup/kubeconfig.sh h2o-cli default
+          # Create cluster role with permissions for deployment
+          kubectl apply -f deployment/tests/permissions/cluster_role.yaml
+          bash tests_common/k8s_cluster_setup/kubeconfig.sh h2o-deployment default
+          # Create cluster role with permissions for operator
+          kubectl apply -f operator/tests/permissions/cluster_role.yaml
+          kubectl apply -f operator/bundle/manifests/h2o.crd.yaml
+          bash tests_common/k8s_cluster_setup/kubeconfig.sh h2o-operator default
+
+          export KUBECONFIG=$(pwd)/kubeconfigs-generated/kubeconfig-h2o-cli-default.yaml
+          cargo test cli --verbose
+
+          export KUBECONFIG=$(pwd)/kubeconfigs-generated/kubeconfig-h2o-deployment-default.yaml
+          cargo test deployment --verbose
+
+          export KUBECONFIG=$(pwd)/kubeconfigs-generated/kubeconfig-h2o-operator-default.yaml
+          cargo test operator --verbose
