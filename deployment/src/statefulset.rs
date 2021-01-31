@@ -1,6 +1,6 @@
 use k8s_openapi::api::apps::v1::StatefulSet;
 use kube::{Api, Client};
-use kube::api::{DeleteParams, PostParams, PropagationPolicy};
+use kube::api::{DeleteParams, PostParams};
 use log::debug;
 
 use crate::crd::H2OSpec;
@@ -32,6 +32,8 @@ spec:
 <command-line>
           ports:
             - containerPort: 54321
+              protocol: TCP
+            - containerPort: 54322
               protocol: TCP
           readinessProbe:
             httpGet:
@@ -200,12 +202,7 @@ pub async fn create(
 /// ```
 pub async fn delete(client: Client, namespace: &str, name: &str) -> Result<(), Error> {
     let statefulset_api: Api<StatefulSet> = Api::namespaced(client.clone(), namespace);
-    let delete_params: DeleteParams = DeleteParams {
-        dry_run: false,
-        grace_period_seconds: None,
-        propagation_policy: Some(PropagationPolicy::Foreground),
-        preconditions: None,
-    };
+    let delete_params: DeleteParams = DeleteParams::default();
 
     statefulset_api.delete(name, &delete_params).await?;
     Ok(())

@@ -18,7 +18,9 @@ For code formatting, please use [rustfmt](https://github.com/rust-lang/rustfmt).
 - Development build (whole workspace) : `cargo build`
 - Release build (whole workspace): `cargo build --release`
 - Development run: `cargo run -p <binary-name> -- <binary-specific-args>`, where `<binary-name>` is either `h2ok` for the CLI or `h2o-operator` for the operator.
-- Test (whole workspace): `cargo test` - please note many tests have prerequisites - running Kubernetes cluster and the `KUBECONFIG` variable set.
+- Test (whole workspace): `cargo test` - please note many tests have prerequisites - running Kubernetes cluster and the `KUBECONFIG` variable set. The `operator` module requires the H2O custom resource definition to be deployed.
+The `KUBECONFIG` environment variable must contain a user/serviceaccount with enough permissions to perform the tests. Automated tests run each module with
+  just enough permissions - see the automated tests section.
 
 One of the ways to set-up a Kubernetes cluster locally [K3s.io](https://k3s.io/) - `curl -sfL https://get.k3s.io | sh -`. There are also [Docker images](https://hub.docker.com/r/rancher/k3s/tags)
 available for K3S. For K3S on Linux `export KUBECONFIG=/etc/rancher/k3s/k3s.yaml` points to the kubeconfig created during K3S installation and is
@@ -31,6 +33,13 @@ The project name is defined in each project's `Cargo.toml`. Any Kubernetes clust
 ## Automated tests
 Automated tests are ran via GitHub actions - the test environment provides the `KUBECONFIG` environment variable with path to a [K3S](https://k3s.io/) Kubernetes instance.
 The definition is to be found in the [.github/workflows/rust.yml](.github/workflows/rust.yml) file.
+
+Each module is tested separately against Kubernetes cluster with different permissions. The Kubeconfigs are generated during the
+test pipeline itself using [kubeconfig.sh](tests_common/k8s_cluster_setup/kubeconfig.sh) script. Each module has its own
+`ServiceAccount` with different `ClusterRole` bound to it. The `ClusterRole` definition with fine-grained permissions is located in
+each model in `{module}/tests/permissions/cluster_role.yaml`: [[CLI](cli/tests/permissions/cluster_role.yaml), [DEPLOYMENT](deployment/tests/permissions/cluster_role.yaml),
+[OPERATOR](operator/tests/permissions/cluster_role.yaml)]. This approach ensures no unexpected permissions are required by newly created
+code.
 
 ## Releasing
 Currently, only the `h2ok` CLI has automated release to be found in the [.github/workflows/release.yml](.github/workflows/release-cli.yml) file. To release,

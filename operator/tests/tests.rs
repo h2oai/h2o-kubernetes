@@ -4,7 +4,6 @@ extern crate tests_common;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::{Child, Command};
-use std::time::Duration;
 
 use futures::StreamExt;
 use k8s_openapi::api::core::v1::{Pod, Service};
@@ -12,22 +11,14 @@ use kube::{Api, Client, Error};
 use kube::api::{DeleteParams, ListParams, Meta, PostParams, WatchEvent};
 use log::info;
 
-use deployment::crd;
-use deployment::crd::{H2O, H2OSpec, Resources, CRDReadiness};
+use deployment::crd::{H2O, H2OSpec, Resources};
 
 #[tokio::test]
 async fn test_operator_deploy_undeploy() {
     let kubeconfig_location: PathBuf = tests_common::kubeconfig_location_panic();
     let (client, namespace): (Client, String) = deployment::client::try_default().await.unwrap();
 
-    if crd::exists(client.clone()).await {
-        crd::delete(client.clone()).await.unwrap();
-        crd::wait_deleted(client.clone(), Duration::from_secs(30)).await.unwrap();
-    }
-
     let mut h2o_operator_process: Child = start_h2o_operator(kubeconfig_location.to_str().unwrap());
-    deployment::crd::wait_added(client.clone(), Duration::from_secs(180)).await.expect("CRD not available within timeout.");
-    deployment::crd::wait_crd_status(client.clone(), Duration::from_secs(180), CRDReadiness::Ready).await.expect("CRD not available within timeout.");
 
     let h2o_api: Api<H2O> = Api::namespaced(client.clone(), &namespace);
     let h2o_name = "test-operator-deploy-undeploy";
@@ -54,9 +45,6 @@ async fn test_operator_deploy_undeploy() {
     h2o_api.delete(h2o_name, &DeleteParams::default()).await.unwrap();
 
     assert!(wait_pods_deleted(client.clone(), h2o_name, &namespace).await.is_ok());
-
-    deployment::crd::delete(client.clone()).await.unwrap();
-    deployment::crd::wait_deleted(client.clone(), Duration::from_secs(30)).await.unwrap();
 
     h2o_operator_process.kill().unwrap();
 }

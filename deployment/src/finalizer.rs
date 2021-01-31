@@ -34,12 +34,7 @@ pub async fn add_finalizer(client: Client, namespace: &str, name: &str) -> Resul
         }
     });
 
-    let patch_params: PatchParams = PatchParams {
-        dry_run: false,
-        patch_strategy: PatchStrategy::Merge,
-        force: false,
-        field_manager: None,
-    };
+    let patch_params: PatchParams = PatchParams::default();
     let h2o: H2O = h2o_api.patch(name, &patch_params, serde_json::to_vec(&finalizer)?)
         .await?;
 
