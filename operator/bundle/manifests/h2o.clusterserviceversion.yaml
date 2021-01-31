@@ -1,13 +1,13 @@
 apiVersion: operators.coreos.com/v1alpha1
 kind: ClusterServiceVersion
 metadata:
-  name: h2o-operator.v0.1.0
+  name: h2o-operator.v<version>
   namespace: placeholder
   annotations:
     alm-examples: '[{"apiVersion":"","kind":"H2O","metadata":{"name":""},"spec":{}}]'
     categories: AI/Machine Learning
     certified: 'true'
-    createdAt: '<created-date>'
+    createdAt: '2021-01-30T18:39:29UTC'
     description: >-
       A Kubernetes operator for H2O  Open Source, Distributed, Fast & Scalable
       Machine Learning Platform.
@@ -49,7 +49,7 @@ spec:
     version of H2O CustomResourceDefinition, if not found on the Kubernetes
     cluster.
   maturity: beta
-  version: 0.1.0
+  version: <version>
   replaces: ''
   skips: []
   minKubeVersion: 1.17.0
@@ -101,86 +101,6 @@ spec:
   install:
     strategy: deployment
     spec:
-      clusterPermissions:
-      - rules:
-        - apiGroups:
-          - ""
-          resources:
-          - namespaces
-          verbs:
-          - get
-        - apiGroups:
-          - ""
-          resources:
-          - secrets
-          verbs:
-          - '*'
-        - apiGroups:
-          - ""
-          resources:
-          - events
-          verbs:
-          - create
-        - apiGroups:
-          - example.com
-          resources:
-          - wordpresses
-          - wordpresses/status
-          verbs:
-          - create
-          - delete
-          - get
-          - list
-          - patch
-          - update
-          - watch
-        - apiGroups:
-          - ""
-          resources:
-          - pods
-          - services
-          - services/finalizers
-          - endpoints
-          - persistentvolumeclaims
-          - events
-          - configmaps
-          - secrets
-          verbs:
-          - create
-          - delete
-          - get
-          - list
-          - patch
-          - update
-          - watch
-        - apiGroups:
-          - apps
-          resources:
-          - deployments
-          - daemonsets
-          - replicasets
-          - statefulsets
-          verbs:
-          - create
-          - delete
-          - get
-          - list
-          - patch
-          - update
-          - watch
-        - apiGroups:
-          - authentication.k8s.io
-          resources:
-          - tokenreviews
-          verbs:
-          - create
-        - apiGroups:
-          - authorization.k8s.io
-          resources:
-          - subjectaccessreviews
-          verbs:
-          - create
-        serviceAccountName: default
       deployments:
         - name: h2o-operator-deployment
           spec:
@@ -194,8 +114,8 @@ spec:
                   k8s-app: h2o-operator
               spec:
                 containers:
-                  image: 'h2oai/h2o-operator:v0.1.0'
-                  imagePullPolicy: IfNotPresent
+                  image: 'h2oai/h2o-operator:<version>'
+                  imagePullPolicy: Always
                   name: h2o-operator
                   resources:
                     limits:
@@ -217,28 +137,53 @@ spec:
                       value: h2o-operator
                 imagePullSecrets:
                   - name: ''
+              serviceAccountName: h2o-operator
       permissions:
         - rules:
-            - apiGroups:
-                - ""
-              resources:
-                - configmaps
+            - apiGroups: ["h2o.ai"]
+              resources: ["h2os"]
               verbs:
-                - get
-                - list
-                - watch
-                - create
-                - update
-                - patch
-                - delete
+              - create
+              - delete
+              - get
+              - list
+              - patch
+              - update
+              - watch
             - apiGroups:
-                - ""
+              - ""
               resources:
-                - events
+              - pods
+              - services
+              - events
+              - services
               verbs:
-                - create
-                - patch
-          serviceAccountName: default
+              - create
+              - delete
+              - get
+              - list
+              - patch
+              - update
+              - watch
+            - apiGroups:
+              - ""
+              resources:
+              - namespaces
+              verbs:
+              - get
+            - apiGroups:
+              - "apps"
+              resources:
+              - statefulsets
+              verbs:
+              - create
+              - delete
+              - get
+              - list
+              - patch
+              - update
+              - watch
+          serviceAccountName: h2o-operator
   installModes:
   - supported: true
     type: OwnNamespace
