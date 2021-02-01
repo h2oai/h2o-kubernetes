@@ -1,17 +1,16 @@
-apiVersion: operators.coreos.com/v1alpha1
+apiVersion: operators.coreos.com/v1beta
 kind: ClusterServiceVersion
 metadata:
-  name: h2o-operator.v<version>
+  name: h2o-operator.v0.1.30
   namespace: placeholder
   annotations:
-    alm-examples: '[{"apiVersion":"","kind":"H2O","metadata":{"name":""},"spec":{}}]'
     categories: AI/Machine Learning
     certified: 'true'
-    createdAt: '2021-01-30T18:39:29UTC'
+    createdAt: '2021-01-27T13:34:22UTC'
     description: >-
       A Kubernetes operator for H2O  Open Source, Distributed, Fast & Scalable
       Machine Learning Platform.
-    containerImage: 'registry.connect.redhat.com/h2oai/h2o-operator'
+    containerImage: 'registry.connect.redhat.com/h2oai/h2o-operator:0.1.20'
     support: 'H2O.ai'
     capabilities: Basic Install
     repository: 'https://github.com/h2oai/h2o-kubernetes'
@@ -49,10 +48,7 @@ spec:
     version of H2O CustomResourceDefinition, if not found on the Kubernetes
     cluster.
   maturity: beta
-  version: <version>
-  replaces: ''
-  skips: []
-  minKubeVersion: 1.17.0
+  version: 0.1.30
   keywords: []
   maintainers:
     - name: Pavel Pscheidl
@@ -95,6 +91,8 @@ spec:
             kind: Secret
           - version: v1
             kind: ConfigMap
+          - version: v1
+            kind: StatefulSet
         specDescriptors: []
         statusDescriptors: []
     required: []
@@ -102,88 +100,89 @@ spec:
     strategy: deployment
     spec:
       deployments:
-        - name: h2o-operator-deployment
-          spec:
-            replicas: 1
-            selector:
-              matchLabels:
-                k8s-app: h2o-operator
-            template:
-              metadata:
-                labels:
-                  k8s-app: h2o-operator
-              spec:
-                containers:
-                  image: 'h2oai/h2o-operator:<version>'
-                  imagePullPolicy: Always
-                  name: h2o-operator
-                  resources:
-                    limits:
-                      cpu: 4
-                      memory: 4Gi
-                    requests:
-                      cpu: 1
-                      memory: 128Mi
-                  env:
-                    - name: WATCH_NAMESPACE
-                      valueFrom:
-                        fieldRef:
-                          fieldPath: 'metadata.annotations[''olm.targetNamespaces'']'
-                    - name: POD_NAME
-                      valueFrom:
-                        fieldRef:
-                          fieldPath: metadata.name
-                    - name: OPERATOR_NAME
-                      value: h2o-operator
-                imagePullSecrets:
-                  - name: ''
+      - name: h2o-operator
+        spec:
+          replicas: 1
+          selector:
+            matchLabels:
+              name: h2o-operator
+          strategy: {}
+          template:
+            metadata:
+              labels:
+                name: h2o-operator
+            spec:
+              containers:
+              - command:
+                - h2o-operator
+                env:
+                - name: WATCH_NAMESPACE
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.annotations['olm.targetNamespaces']
+                - name: POD_NAME
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.name
+                - name: OPERATOR_NAME
+                  value: h2o-operator
+                image: registry.connect.redhat.com/h2oai/h2o-operator:0.1.20
+                imagePullPolicy: Always
+                name: h2o-operator
+                resources: {}
               serviceAccountName: h2o-operator
       permissions:
-        - rules:
-            - apiGroups: ["h2o.ai"]
-              resources: ["h2os"]
-              verbs:
-              - create
-              - delete
-              - get
-              - list
-              - patch
-              - update
-              - watch
-            - apiGroups:
-              - ""
-              resources:
-              - pods
-              - services
-              - events
-              - services
-              verbs:
-              - create
-              - delete
-              - get
-              - list
-              - patch
-              - update
-              - watch
-            - apiGroups:
-              - ""
-              resources:
-              - namespaces
-              verbs:
-              - get
-            - apiGroups:
-              - "apps"
-              resources:
-              - statefulsets
-              verbs:
-              - create
-              - delete
-              - get
-              - list
-              - patch
-              - update
-              - watch
-          serviceAccountName: h2o-operator
+      - rules:
+        - apiGroups: ["h2o.ai"]
+          resources:
+          - "*"
+          verbs:
+          - "*"
+        - apiGroups:
+          - ""
+          resources:
+          - pods
+          - services
+          - events
+          - services
+          - services/finalizers
+          - endpoints
+          - configmaps
+          - secrets
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - ""
+          resources:
+          - namespaces
+          verbs:
+          - get
+        - apiGroups:
+          - "apps"
+          resources:
+          - statefulsets
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - monitoring.coreos.com
+          resources:
+          - servicemonitors
+          verbs:
+          - get
+          - create
+        serviceAccountName: h2o-operator
   installModes:
   - supported: true
     type: OwnNamespace
