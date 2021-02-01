@@ -48,5 +48,5 @@ spec:
                   required: ["cpu", "memory"]
               oneOf:
                 - required: ["version"]
-                - required: ["custom_image"]
+                - required: ["customImage"]
               required: ["nodes", "resources"]
