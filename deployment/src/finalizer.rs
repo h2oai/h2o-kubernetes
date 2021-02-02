@@ -1,11 +1,11 @@
 use kube::{Api, Client};
-use kube::api::{PatchParams, PatchStrategy};
+use kube::api::{PatchParams};
 use serde_json::json;
 
 use crate::crd::H2O;
 use crate::Error;
 
-pub const FINALIZER_NAME: &str = "h2o3.h2o.ai";
+pub const FINALIZER_NAME: &str = "h2os.h2o.ai";
 
 /// Adds a finalizer into metadata of an H2O resource of given `name`.
 /// The resource modification is an asynchronous operation - at the time this method returns,
@@ -30,14 +30,13 @@ pub async fn add_finalizer(client: Client, namespace: &str, name: &str) -> Resul
     let h2o_api: Api<H2O> = Api::namespaced(client, namespace);
     let finalizer = json!({
         "metadata": {
-            "finalizers": ["h2o3.h2o.ai"]
+            "finalizers": ["h2os.h2o.ai"]
         }
     });
 
     let patch_params: PatchParams = PatchParams::default();
     let h2o: H2O = h2o_api.patch(name, &patch_params, serde_json::to_vec(&finalizer)?)
         .await?;
-
     Ok(h2o)
 }
 
@@ -57,15 +56,8 @@ pub async fn remove_finalizer(client: Client, name: &str, namespace: &str) -> Re
         }
     });
 
-    let patch_params: PatchParams = PatchParams {
-        dry_run: false,
-        patch_strategy: PatchStrategy::Merge,
-        force: false,
-        field_manager: None,
-    };
-
     let h2o_without_finalizer: H2O = h2o_api
-        .patch(name, &patch_params, serde_json::to_vec(&finalizer)?)
+        .patch(name, &PatchParams::default(), serde_json::to_vec(&finalizer)?)
         .await?;
     Ok(h2o_without_finalizer)
 }
