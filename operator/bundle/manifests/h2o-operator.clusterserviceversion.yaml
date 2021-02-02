@@ -114,7 +114,7 @@ spec:
             spec:
               containers:
               - command:
-                - h2o-operator
+                - ./opt/h2oai/h2o-operator
                 env:
                 - name: WATCH_NAMESPACE
                   valueFrom:
