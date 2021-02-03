@@ -4,6 +4,7 @@ metadata:
   name: h2o-operator.v0.1.30
   namespace: placeholder
   annotations:
+    alm-examples: '[{"apiVersion":"h2o.ai/v1beta","kind":"H2O","metadata":{"name":"h2o-test"},"spec":{"nodes":1,"resources":{"cpu":1,"memory":"256Mi","memoryPercentage":90},"customImage":{"image":"registry.connect.redhat.com/h2oai/h2o:3.32.0.8"}}}]'
     categories: AI/Machine Learning
     certified: 'true'
     createdAt: '2021-01-27T13:34:22UTC'
