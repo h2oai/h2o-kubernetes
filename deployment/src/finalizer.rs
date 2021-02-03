@@ -5,7 +5,7 @@ use serde_json::json;
 use crate::crd::H2O;
 use crate::Error;
 
-pub const FINALIZER_NAME: &str = "h2o3.h2o.ai";
+pub const FINALIZER_NAME: &str = "h2os.h2o.ai";
 
 /// Adds a finalizer into metadata of an H2O resource of given `name`.
 /// The resource modification is an asynchronous operation - at the time this method returns,
@@ -30,7 +30,7 @@ pub async fn add_finalizer(client: Client, namespace: &str, name: &str) -> Resul
     let h2o_api: Api<H2O> = Api::namespaced(client, namespace);
     let finalizer = json!({
         "metadata": {
-            "finalizers": ["h2o3.h2o.ai"]
+            "finalizers": ["h2os.h2o.ai"]
         }
     });
 

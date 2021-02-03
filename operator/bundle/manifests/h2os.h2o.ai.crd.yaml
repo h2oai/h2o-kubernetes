@@ -47,3 +47,11 @@ spec:
             - required: [ "version" ]
             - required: [ "customImage" ]
           required: [ "nodes", "resources" ]
+        status:
+          type: object
+status:
+  acceptedNames:
+    kind: ''
+    plural: ''
+  conditions: null
+  storedVersions: null
