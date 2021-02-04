@@ -9,6 +9,8 @@ spec:
     plural: h2os
     singular: h2o
   scope: Namespaced
+  subresources:
+    status: {}
   version: v1beta
   validation:
     openAPIV3Schema:
@@ -53,5 +55,5 @@ status:
   acceptedNames:
     kind: ''
     plural: ''
-  conditions: null
-  storedVersions: null
+  conditions: []
+  storedVersions: []

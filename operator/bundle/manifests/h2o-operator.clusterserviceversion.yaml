@@ -11,7 +11,7 @@ metadata:
     description: >-
       A Kubernetes operator for H2O  Open Source, Distributed, Fast & Scalable
       Machine Learning Platform.
-    containerImage: 'registry.connect.redhat.com/h2oai/h2o-operator:0.1.20'
+    containerImage: 'registry.connect.redhat.com/h2oai/h2o-operator:0.1.21'
     support: 'H2O.ai'
     capabilities: Basic Install
     repository: 'https://github.com/h2oai/h2o-kubernetes'
@@ -74,28 +74,55 @@ spec:
       mediatype: image/svg+xml
   customresourcedefinitions:
     owned:
-      - name: h2os.h2o.ai
-        displayName: H2O
-        kind: H2O
-        version: v1beta
-        description: H2O
-        resources:
-          - version: v1
-            kind: Deployment
-          - version: v1
-            kind: Service
-          - version: v1
-            kind: ReplicaSet
-          - version: v1
-            kind: Pod
-          - version: v1
-            kind: Secret
-          - version: v1
-            kind: ConfigMap
-          - version: v1
-            kind: StatefulSet
-        specDescriptors: []
-        statusDescriptors: []
+    - name: h2os.h2o.ai
+      displayName: H2O
+      kind: H2O
+      version: v1beta
+      description: H2O
+      resources:
+      - version: v1
+        kind: Deployment
+      - version: v1
+        kind: Service
+      - version: v1
+        kind: ReplicaSet
+      - version: v1
+        kind: Pod
+      - version: v1
+        kind: Secret
+      - version: v1
+        kind: ConfigMap
+      - version: v1
+        kind: StatefulSet
+      specDescriptors:
+      - description: Number of H2O Nodes to spawn
+        displayName: H2O Nodes
+        path: nodes
+      - description: Version of H2O to use, must be accessible in the Docker repository (version used as a tag)
+        displayName: H2O Version
+        path: version
+      - description: H2O resources (per node)
+        displayName: Resources
+        path: resources
+      - description: Amount of CPUs per node
+        displayName: CPUs
+        path: resources.cpu
+      - description: Amount of Memory per node
+        displayName: Memory
+        path: resources.memory
+      - description: Amount of available memory percentage consumed by JVM in each node
+        displayName: H2O JVM Memory Percentage
+        path: resources.memoryPercentage
+      - description: Custom image specification
+        displayName: Custom image
+        path: customImage
+      - description: Custom image repostitory, name and tag
+        displayName: Custom image name
+        path: customImage.image
+      - description: Docker image CMD/Entrypoint
+        displayName: Custom image command
+        path: customImage.command
+      statusDescriptors: []
     required: []
   install:
     strategy: deployment
@@ -127,7 +154,7 @@ spec:
                       fieldPath: metadata.name
                 - name: OPERATOR_NAME
                   value: h2o-operator
-                image: registry.connect.redhat.com/h2oai/h2o-operator:0.1.20
+                image: registry.connect.redhat.com/h2oai/h2o-operator:0.1.21
                 imagePullPolicy: Always
                 name: h2o-operator
                 resources: {}

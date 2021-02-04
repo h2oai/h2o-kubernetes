@@ -185,6 +185,7 @@ async fn create_h2o_deployment(
         deployment::finalizer::add_finalizer(data.client.clone(), &data.default_namespace, &name);
 
     tokio::try_join!(deploy_future, add_finalizer_future)?;
+    deployment::crd::add_empty_status(data.client.clone(), &name, &data.default_namespace).await.unwrap();
 
     info!("Deployed H2O '{}'.", &name);
     return Ok(ReconcilerAction {
