@@ -1,5 +1,5 @@
 use kube::{Api, Client};
-use kube::api::{PatchParams, PatchStrategy};
+use kube::api::{PatchParams};
 use serde_json::json;
 
 use crate::crd::H2O;
@@ -37,7 +37,6 @@ pub async fn add_finalizer(client: Client, namespace: &str, name: &str) -> Resul
     let patch_params: PatchParams = PatchParams::default();
     let h2o: H2O = h2o_api.patch(name, &patch_params, serde_json::to_vec(&finalizer)?)
         .await?;
-
     Ok(h2o)
 }
 
@@ -57,15 +56,8 @@ pub async fn remove_finalizer(client: Client, name: &str, namespace: &str) -> Re
         }
     });
 
-    let patch_params: PatchParams = PatchParams {
-        dry_run: false,
-        patch_strategy: PatchStrategy::Merge,
-        force: false,
-        field_manager: None,
-    };
-
     let h2o_without_finalizer: H2O = h2o_api
-        .patch(name, &patch_params, serde_json::to_vec(&finalizer)?)
+        .patch(name, &PatchParams::default(), serde_json::to_vec(&finalizer)?)
         .await?;
     Ok(h2o_without_finalizer)
 }
