@@ -194,8 +194,13 @@ jobs:
         run: |
           VERSION=$(cat operator/Cargo.toml | sed -n "s/^version\s*=\s*\"\([0-9]*\.[0-9]*\.[0-9]*\)\"$/\1/p")
           echo "::set-output name=version::$VERSION"
-      - uses: actions/checkout@v2
-      - name: Next SemVer for release branch
+      - name: Create Branch
+        uses: peterjgrainger/action-create-branch@v2.0.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          branch: patch-${{ steps.current-ver.outputs.version }}
+      - name: Next SemVer for patch branch
         uses: WyriHaximus/github-action-next-semvers@v1.0
         id: next-patch
         with:
