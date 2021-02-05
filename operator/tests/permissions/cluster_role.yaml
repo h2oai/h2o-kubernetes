@@ -4,15 +4,10 @@ metadata:
     name: "h2o-operator"
 rules:
     - apiGroups: ["h2o.ai"]
-      resources: ["h2os"]
+      resources:
+        - "*"
       verbs:
-      - create
-      - delete
-      - get
-      - list
-      - patch
-      - update
-      - watch
+        - "*"
     - apiGroups:
       - ""
       resources:
