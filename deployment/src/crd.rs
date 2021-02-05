@@ -1,12 +1,11 @@
 extern crate log;
 
 use kube::{Api, Client, CustomResource};
-use kube::api::{PostParams, PatchParams};
+use kube::api::{PatchParams};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{Error, finalizer};
-use futures::TryStreamExt;
 
 /// Specification of an H2O cluster in a Kubernetes cluster.
 /// Determines attributes like cluster size, resources (cpu, memory) and pod configuration.
