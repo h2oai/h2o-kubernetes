@@ -46,7 +46,7 @@ jobs:
 
           # Create cluster role and a service with permissions  and related kubeconfig for OPERATOR
           kubectl apply -f operator/tests/permissions/cluster_role.yaml
-          kubectl apply -f operator/bundle/manifests/h2o.crd.yaml
+          kubectl apply -f operator/bundle/manifests/h2os.h2o.ai.crd.yaml
           bash tests_common/k8s_cluster_setup/kubeconfig.sh h2o-operator default
 
           # 🅃🄴🅂🅃🅂
@@ -148,8 +148,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+      - name: Bump up operator version
+        run: sed -i "s/version\s=\s\"\(0.1.0\)\"/version = \"${{ github.event.inputs.new_version }}\"/g" operator/Cargo.toml
       - name: Commit new version
-        uses: EndBug/add-and-commit@v6.2.0
+        uses: EndBug/add-and-commit@v7.0.0
         with:
           author_name: 'Operator Release'
           author_email: '<pavel.pscheidl@h2o.ai>'

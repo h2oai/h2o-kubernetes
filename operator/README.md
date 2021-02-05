@@ -39,7 +39,7 @@ docker build --build-arg H2O_VERSION=custom -t h2o-operator:custom -f docker/pub
 Once the Dockerfile is built, make sure to push it to a proper repository reachable by the Kubernetes cluster (e.g. [Docker Hub](hub.docker.com)).
 
 Before the actual image is deployed, the H2O `CustomResourceDefinition` must be created in the Kubernetes cluster. The definition is to be found
-in [bundle/manifests/h2o.crd.yaml](bundle/manifests/h2o.crd.yaml). Download it and do `kubectl apply -f h2o.crd.yaml`. Such an operation requires
+in [bundle/manifests/h2o.crd.yaml](crd/h2os.h2o.ai.crd.yaml). Download it and do `kubectl apply -f h2os.h2o.ai.crd.yaml`. Such an operation requires
 user with the following permissions:
 
 ```yaml

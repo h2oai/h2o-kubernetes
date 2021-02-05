@@ -1,15 +1,16 @@
 extern crate log;
 
-use kube::{CustomResource};
+use kube::{Api, Client, CustomResource};
+use kube::api::{PatchParams};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::finalizer;
+use crate::{Error, finalizer};
 
 /// Specification of an H2O cluster in a Kubernetes cluster.
 /// Determines attributes like cluster size, resources (cpu, memory) and pod configuration.
 #[derive(CustomResource, Serialize, Deserialize, Debug, PartialEq, Clone, JsonSchema)]
-#[kube(group = "h2o.ai", version = "v1beta", kind = "H2O", namespaced)]
+#[kube(group = "h2o.ai", version = "v1beta", kind = "H2O", status = "H2OStatus", derive = "PartialEq", namespaced)]
 #[kube(shortname = "h2o", namespaced)]
 pub struct H2OSpec {
     pub nodes: u32,
@@ -44,6 +45,10 @@ impl H2OSpec {
         }
     }
 }
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, JsonSchema, Default)]
+pub struct H2OStatus{
+}
+
 
 /// Resources allocated by each H2O pod
 /// Limits and requests are always set to the same value in order for H2O operations
@@ -124,4 +129,17 @@ pub fn has_h2o3_finalizer(h2o: &H2O) -> bool {
         }
         None => false,
     };
+}
+
+pub async fn add_empty_status(client: Client, name: &str, namespace: &str) -> Result<H2O, Error> {
+    let api: Api<H2O> = Api::namespaced(client.clone(), namespace);
+    let mut h2o: H2O = api.get(name).await.unwrap();
+    let status: H2OStatus = H2OStatus::default();
+    h2o.status = Option::Some(status);
+
+    let result: Result<H2O, Error> = api.patch_status(name, &PatchParams::default(), serde_json::to_vec(&h2o)
+        .unwrap()).await
+        .map_err(Error::from);
+
+    return result;
 }

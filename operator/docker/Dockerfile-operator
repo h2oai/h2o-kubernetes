@@ -30,4 +30,4 @@ RUN rustup self uninstall -y
 RUN microdnf remove make cmake cmake-data openssl-devel gcc && microdnf clean all
 RUN rm /opt/h2o-operator/ -rf
 
-CMD ./opt/h2oai/h2o-operator
+CMD /opt/h2oai/h2o-operator

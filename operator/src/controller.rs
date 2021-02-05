@@ -131,7 +131,7 @@ async fn reconcile(h2o: H2O, context: Context<ContextData>) -> Result<Reconciler
 ///# Examples
 /// As this function is intended to be called by the controller only, there are no examples.
 fn error_policy(error: &Error, _context: Context<ContextData>) -> ReconcilerAction {
-    error!("Reconciliation error:\n{}", error);
+    error!("Reconciliation error:\n{:?}", error);
     ReconcilerAction {
         requeue_after: Some(Duration::from_secs(10)),
     }
@@ -185,6 +185,7 @@ async fn create_h2o_deployment(
         deployment::finalizer::add_finalizer(data.client.clone(), &data.default_namespace, &name);
 
     tokio::try_join!(deploy_future, add_finalizer_future)?;
+    deployment::crd::add_empty_status(data.client.clone(), &name, &data.default_namespace).await.unwrap();
 
     info!("Deployed H2O '{}'.", &name);
     return Ok(ReconcilerAction {
