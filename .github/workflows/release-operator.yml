@@ -153,6 +153,36 @@ jobs:
           asset_path: ./${{ env.RELEASED_ARTIFACT_NAME }}_${{ env.TARGET_LINUX }}.zip
           asset_name: ${{ env.TARGET_LINUX }}
           asset_content_type: application
+      - name: Upload v1 CRD # version of CRD resource, not H2O resource
+        id: upload-release-asset-linux
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: operator/crd/h2os.h2o.ai.crd.yaml
+          asset_name: h2os.h2o.ai.crd.v1.yaml
+          asset_content_type: application/x-yaml
+      - name: Upload v1beta1 CRD # version of CRD resource, not H2O resource
+        id: upload-release-asset-linux
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: operator/crd/h2os.h2o.ai.crd.yaml
+          asset_name: h2os.h2o.ai.crd.v1beta1.yaml
+          asset_content_type: application/x-yaml
+      - name: Upload v1beta1 CRD # version of CRD resource, not H2O resource
+        id: upload-release-asset-linux
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: operator/tests/permissions/cluster_role.yaml
+          asset_name: h2o-operator-role.yaml
+          asset_content_type: application/x-yaml
 
   push-new-version-git:
     needs: [github-release]
@@ -169,14 +199,14 @@ jobs:
         uses: WyriHaximus/github-action-next-semvers@v1.0
         id: next-patch
         with:
-          - version: ${{ steps.current-ver.outputs.version }}
+          version: ${{ steps.current-ver.outputs.version }}
       - name: Commit new version to patch branch
         uses: EndBug/add-and-commit@v7.0.0
         with:
           author_name: 'Operator Release'
           author_email: '<pavel.pscheidl@h2o.ai>'
-          message: 'Version patch-${{ steps.current-ver.outputs.version }}'
-          branch: ''patch-${{ steps.current-ver.outputs.version }}''
+          message: Version patch-${{ steps.current-ver.outputs.version }}
+          branch: patch-${{ steps.current-ver.outputs.version }}
           add: 'operator/Cargo.toml'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
