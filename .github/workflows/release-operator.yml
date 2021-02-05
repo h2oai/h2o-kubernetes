@@ -44,10 +44,15 @@ jobs:
           kubectl apply -f deployment/tests/permissions/cluster_role.yaml
           bash tests_common/k8s_cluster_setup/kubeconfig.sh h2o-deployment default
 
-          # Create cluster role and a service with permissions  and related kubeconfig for OPERATOR
+          # Create cluster role and a service with permissions and related kubeconfig for OPERATOR with CRD v1
+          kubectl apply -f operator/tests/permissions/cluster_role.yaml
+          kubectl apply -f operator/crd/h2os.h2o.ai.crd.yaml
+          bash tests_common/k8s_cluster_setup/kubeconfig.sh h2o-operator default
+
+          # Create cluster role and a service with permissions and related kubeconfig for OPERATOR with CRD v1beta1
           kubectl apply -f operator/tests/permissions/cluster_role.yaml
           kubectl apply -f operator/bundle/manifests/h2os.h2o.ai.crd.yaml
-          bash tests_common/k8s_cluster_setup/kubeconfig.sh h2o-operator default
+          bash tests_common/k8s_cluster_setup/kubeconfig.sh h2o-operator-v1beta1 default
 
           # 🅃🄴🅂🅃🅂
           # Each module is tested with kubeconfig reflecting service account with just enough permissions
@@ -59,8 +64,14 @@ jobs:
           cargo test --verbose
           cd ../
 
-          # Test OPERATOR module
+          # Test OPERATOR module with CRD v1
           export KUBECONFIG=$(pwd)/kubeconfigs-generated/kubeconfig-h2o-operator-default.yaml
+          cd operator
+          cargo test --verbose
+          cd ../
+
+          # Test OPERATOR module with CRD v1beta1
+          export KUBECONFIG=$(pwd)/kubeconfigs-generated/kubeconfig-h2o-operator-v1beta1-default.yaml
           cd operator
           cargo test --verbose
           cd ../
