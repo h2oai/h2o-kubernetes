@@ -28,7 +28,7 @@ jobs:
         with:
           version: 'latest'
       - uses: actions/checkout@v2
-      - name: Extract current version
+      - name: Find out current version
         id: current-ver
         run: |
           VERSION=$(cat operator/Cargo.toml | sed -n "s/^version\s*=\s*\"\([0-9]*\.[0-9]*\.[0-9]*\)\"$/\1/p")
@@ -74,20 +74,22 @@ jobs:
           name: ${{ env.TARGET_LINUX }}
           path: ${{ env.RELEASED_ARTIFACT_NAME }}_${{ env.TARGET_LINUX }}.zip
 
-  build-docker:
+  release-openshift:
     needs: [build-linux]
-    name: Build Operator Dockerfile
+    name: Release OpenShift specific Docker images
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v2
-      - name: Extract current version
+      - name: Find out current version
         id: current-ver
         run: |
           VERSION=$(cat operator/Cargo.toml | sed -n "s/^version\s*=\s*\"\([0-9]*\.[0-9]*\.[0-9]*\)\"$/\1/p")
           echo "::set-output name=version::$VERSION"
       - name: Build Operator Dockerfile
         run: |
+          # Push and publish Docker image with H2O Operator binary first, as this is required for the bundle step to pass validation tests.
+          # Build, push, wait for validations and publish
           pip install requests argparse
           echo "${{ secrets.OPERATOR_RED_HAT_REGISTRY_KEY }}" | docker login -u unused scan.connect.redhat.com --password-stdin
           docker build -t ${{ secrets.OPERATOR_RED_HAT_SCAN_TAG_PREFIX }}${{ env.OPERATOR_NAME }}:${{steps.current-ver.outputs.version}} -f operator/docker/Dockerfile-operator . --build-arg OPERATOR_VERSION=${{ steps.current-ver.outputs.version }} --no-cache
@@ -95,6 +97,8 @@ jobs:
           echo $OPERATOR_DIGEST
           python operator/release/red_hat_docker_certification.py --api_key ${{ secrets.RED_HAT_CONNECT_API_KEY }} --pid ${{ secrets.OPERATOR_RED_HAT_PID }} --tag ${{ steps.current-ver.outputs.version }} $OPERATOR_DIGEST
           docker logout
+
+          # Build and push H2O Operator bundle, wait for validations to pass and publish it
           echo "${{ secrets.OPERATOR_BUNDLE_RED_HAT_REGISTRY_KEY }}" | docker login -u unused scan.connect.redhat.com --password-stdin
           CREATED_DATE=$(date --utc +%FT%T%Z)
           sed -i "s/<created-date>/$CREATED_DATE/g" operator/bundle/manifests/h2o-operator.clusterserviceversion.yaml
@@ -106,14 +110,21 @@ jobs:
           python operator/release/red_hat_docker_certification.py --api_key ${{ secrets.RED_HAT_CONNECT_API_KEY }} --pid ${{ secrets.OPERATOR_BUNDLE_RED_HAT_PID }} --tag ${{ steps.current-ver.outputs.version }} $BUNDLE_DIGEST
           docker logout
 
-  gh-release:
+          # Docker Hub contains the same operator binary as OpenShift repository
+          # Red Hat services are unstable and error-prone, push to docker hub last
+          docker tag ${{ secrets.OPERATOR_RED_HAT_SCAN_TAG_PREFIX }}${{ env.OPERATOR_NAME }}:${{steps.current-ver.outputs.version}} h2oai/h2o-k8s-operator:${{steps.current-ver.outputs.version}}
+          echo "${{ secrets.H2O_DOCKER_HUB_PASSWORD }}" | docker login -u ${{ secrets.H2O_DOCKER_HUB_LOGIN }} scan.connect.redhat.com --password-stdin
+          docker push h2oai/h2o-k8s-operator:${{steps.current-ver.outputs.version}}
+          docker logout
+
+  github-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    needs: [ build-docker ]
+    needs: [ release-openshift, release-docker-hub ]
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
-      - name: Extract current version
+      - name: Find out current version
         id: current-ver
         run: |
           VERSION=$(cat operator/Cargo.toml | sed -n "s/^version\s*=\s*\"\([0-9]*\.[0-9]*\.[0-9]*\)\"$/\1/p")
@@ -144,13 +155,34 @@ jobs:
           asset_content_type: application
 
   push-new-version-git:
-    needs: [gh-release]
+    needs: [github-release]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+      - name: Find out current version
+        id: current-ver
+        run: |
+          VERSION=$(cat operator/Cargo.toml | sed -n "s/^version\s*=\s*\"\([0-9]*\.[0-9]*\.[0-9]*\)\"$/\1/p")
+          echo "::set-output name=version::$VERSION"
+      - uses: actions/checkout@v2
+      - name: Next SemVer for release branch
+        uses: WyriHaximus/github-action-next-semvers@v1.0
+        id: next-patch
+        with:
+          - version: ${{ steps.current-ver.outputs.version }}
+      - name: Commit new version to patch branch
+        uses: EndBug/add-and-commit@v7.0.0
+        with:
+          author_name: 'Operator Release'
+          author_email: '<pavel.pscheidl@h2o.ai>'
+          message: 'Version patch-${{ steps.current-ver.outputs.version }}'
+          branch: ''patch-${{ steps.current-ver.outputs.version }}''
+          add: 'operator/Cargo.toml'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Bump up operator version
         run: sed -i "s/version\s=\s\"\(0.1.0\)\"/version = \"${{ github.event.inputs.new_version }}\"/g" operator/Cargo.toml
-      - name: Commit new version
+      - name: Commit new version to current branch
         uses: EndBug/add-and-commit@v7.0.0
         with:
           author_name: 'Operator Release'
