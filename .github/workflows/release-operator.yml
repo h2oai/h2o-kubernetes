@@ -154,7 +154,6 @@ jobs:
           asset_name: ${{ env.TARGET_LINUX }}
           asset_content_type: application
       - name: Upload v1 CRD # version of CRD resource, not H2O resource
-        id: upload-release-asset-linux
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -164,17 +163,15 @@ jobs:
           asset_name: h2os.h2o.ai.crd.v1.yaml
           asset_content_type: application/x-yaml
       - name: Upload v1beta1 CRD # version of CRD resource, not H2O resource
-        id: upload-release-asset-linux
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: operator/crd/h2os.h2o.ai.crd.yaml
+          asset_path: operator/bundle/manifests/h2os.h2o.ai.crd.yaml
           asset_name: h2os.h2o.ai.crd.v1beta1.yaml
           asset_content_type: application/x-yaml
       - name: Upload v1beta1 CRD # version of CRD resource, not H2O resource
-        id: upload-release-asset-linux
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -184,7 +181,7 @@ jobs:
           asset_name: h2o-operator-role.yaml
           asset_content_type: application/x-yaml
 
-  push-new-version-git:
+  create-patch-branch:
     needs: [github-release]
     runs-on: ubuntu-latest
     steps:
@@ -205,18 +202,31 @@ jobs:
         id: next-patch
         with:
           version: ${{ steps.current-ver.outputs.version }}
+      - name: Bump up version for patch branch
+        run: sed -i "s/version\s=\s\"\(${{ steps.current-ver.outputs.version }}\)\"/version = \"${{ steps.next-patch.outputs.patch }}\"/g" operator/Cargo.toml
       - name: Commit new version to patch branch
         uses: EndBug/add-and-commit@v7.0.0
         with:
           author_name: 'Operator Release'
           author_email: '<pavel.pscheidl@h2o.ai>'
-          message: Version patch-${{ steps.current-ver.outputs.version }}
+          message: Version ${{ steps.next-patch.outputs.patch }}
           branch: patch-${{ steps.current-ver.outputs.version }}
           add: 'operator/Cargo.toml'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  update-original-branch:
+    needs: [github-release]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Find out current version
+        id: current-ver
+        run: |
+          VERSION=$(cat operator/Cargo.toml | sed -n "s/^version\s*=\s*\"\([0-9]*\.[0-9]*\.[0-9]*\)\"$/\1/p")
+          echo "::set-output name=version::$VERSION"
       - name: Bump up operator version
-        run: sed -i "s/version\s=\s\"\(0.1.0\)\"/version = \"${{ github.event.inputs.new_version }}\"/g" operator/Cargo.toml
+        run: sed -i "s/version\s=\s\"\(${{ steps.current-ver.outputs.version }}\)\"/version = \"${{ github.event.inputs.new_version }}\"/g" operator/Cargo.toml
       - name: Commit new version to current branch
         uses: EndBug/add-and-commit@v7.0.0
         with:
