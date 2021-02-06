@@ -43,8 +43,9 @@ mod controller;
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     initialize_logging();
+    info!("H2O Kubernetes Operator");
     let (client, namespace): (Client, String) = deployment::client::try_default().await?;
-    info!("Kubeconfig found. Using default namespace: {}", &namespace);
+    info!("Kubeconfig found. Default namespace: {}", &namespace);
     controller::run(client.clone(), &namespace).await;
     Ok(())
 }
