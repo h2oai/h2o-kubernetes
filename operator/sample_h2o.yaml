@@ -3,10 +3,9 @@ kind: H2O
 metadata:
   name: h2o-test
 spec:
+  version: "3.32.0.1"
   nodes: 1
   resources:
     cpu: 1
     memory: "256Mi"
     memoryPercentage: 90
-  customImage:
-    image: registry.connect.redhat.com/h2oai/h2o:3.32.0.8

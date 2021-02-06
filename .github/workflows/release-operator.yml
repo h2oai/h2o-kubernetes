@@ -70,7 +70,7 @@ jobs:
           cargo test --verbose
           cd ../
 
-          # Test OPERATOR module with CRD v1beta1
+          # Test OPERATOR module with CRD v1beta1 to test out the Red Hat version of the H2O custom resource
           export KUBECONFIG=$(pwd)/kubeconfigs-generated/kubeconfig-h2o-operator-v1beta1-default.yaml
           cd operator
           cargo test --verbose
@@ -129,7 +129,7 @@ jobs:
           docker logout
 
   github-release:
-    name: Create GitHub Release
+    name: GitHub Release
     runs-on: ubuntu-latest
     needs: [ release-docker-images ]
     steps:
@@ -192,9 +192,12 @@ jobs:
           asset_name: h2o-operator-role.yaml
           asset_content_type: application/x-yaml
 
+  # If the build is triggered on master, create a patch branch for that release
   create-patch-branch:
     needs: [github-release]
     runs-on: ubuntu-latest
+    if: ${{ github.ref }} == 'refs/heads/master'
+    name: Crate patch branch
     steps:
       - uses: actions/checkout@v2
       - name: Find out current version
@@ -220,15 +223,18 @@ jobs:
         with:
           author_name: 'Operator Release'
           author_email: '<pavel.pscheidl@h2o.ai>'
-          message: Version ${{ steps.next-patch.outputs.patch }}
+          message: Operator version ${{ steps.next-patch.outputs.patch }}
           branch: patch-${{ steps.current-ver.outputs.version }}
           add: 'operator/Cargo.toml'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  update-original-branch:
+  # If the builds is triggered in master branch, set new version on master according to user's input.
+  update-master-version:
     needs: [github-release]
+    name: Update user-defined version in master branch
     runs-on: ubuntu-latest
+    if: ${{ github.ref }} == 'refs/heads/master'
     steps:
       - uses: actions/checkout@v2
       - name: Find out current version
@@ -243,7 +249,37 @@ jobs:
         with:
           author_name: 'Operator Release'
           author_email: '<pavel.pscheidl@h2o.ai>'
-          message: 'Version ${{ github.event.inputs.new_version }}'
+          message: Operator version ${{ github.event.inputs.new_version }}
+          add: 'operator/Cargo.toml'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # If the build is triggered on non-master branch (patch), update patch version on that branch after release.
+  update-patch-version:
+    needs: [github-release]
+    name: Update version in patch branch
+    runs-on: ubuntu-latest
+    if: ${{ github.ref }} != 'refs/heads/master'
+    steps:
+      - uses: actions/checkout@v2
+      - name: Find out current version
+        id: current-ver
+        run: |
+          VERSION=$(cat operator/Cargo.toml | sed -n "s/^version\s*=\s*\"\([0-9]*\.[0-9]*\.[0-9]*\)\"$/\1/p")
+          echo "::set-output name=version::$VERSION"
+      - name: Next SemVer for patch branch
+        uses: WyriHaximus/github-action-next-semvers@v1.0
+        id: next-patch
+        with:
+          version: ${{ steps.current-ver.outputs.version }}
+      - name: Bump up operator version
+        run: sed -i "s/version\s=\s\"\(${{ steps.current-ver.outputs.version }}\)\"/version = \"${{ steps.next-patch.outputs.patch }}\"/g" operator/Cargo.toml
+      - name: Commit new version to current branch
+        uses: EndBug/add-and-commit@v7.0.0
+        with:
+          author_name: 'Operator Release'
+          author_email: '<pavel.pscheidl@h2o.ai>'
+          message: Operator version ${{ steps.next-patch.outputs.patch }}
           add: 'operator/Cargo.toml'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
