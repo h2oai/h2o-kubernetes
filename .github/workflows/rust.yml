@@ -42,7 +42,7 @@ jobs:
           # for the given module.
           #Test CLI module
           export KUBECONFIG=$(pwd)/kubeconfigs-generated/kubeconfig-h2o-cli-default.yaml
-          cargo test -p cli --verbose
+          cargo test -p h2ok --verbose
 
           # Test DEPLOYMENT module
           export KUBECONFIG=$(pwd)/kubeconfigs-generated/kubeconfig-h2o-deployment-default.yaml
