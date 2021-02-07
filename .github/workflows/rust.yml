@@ -59,6 +59,4 @@ jobs:
 
           # Test OPERATOR module with CRD v1beta1 to test out the Red Hat version of the H2O custom resource
           export KUBECONFIG=$(pwd)/kubeconfigs-generated/kubeconfig-h2o-operator-default.yaml
-          cd operator
-          cargo test --verbose
-          cd ../
+          cargo test -p operator --verbose
