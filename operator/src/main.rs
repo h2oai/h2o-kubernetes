@@ -5,7 +5,7 @@ extern crate simple_logger;
 extern crate tokio;
 
 use kube::Client;
-use log::{info, LevelFilter};
+use log::{info, error, LevelFilter};
 use simple_logger::SimpleLogger;
 
 use deployment::Error;
@@ -45,9 +45,25 @@ async fn main() -> Result<(), Error> {
     initialize_logging();
     info!("H2O Kubernetes Operator");
     let (client, namespace): (Client, String) = deployment::client::try_default().await?;
-    info!("Kubeconfig found. Default namespace: {}", &namespace);
+    print_startup_diagnostics(&client, &namespace).await;
     controller::run(client.clone(), &namespace).await;
     Ok(())
+}
+
+async fn print_startup_diagnostics(client: &Client, namespace: &str) {
+    info!("Kubeconfig found. Operator is running in '{}' namespace.", namespace);
+    match client.apiserver_version().await {
+        Ok(k8s_info) => {
+            info!(r#"Kubernetes Api server info:
+- Version: {}.{}
+- Platform: {}
+- Build date: {}"#,
+                  k8s_info.major, k8s_info.minor, k8s_info.platform, k8s_info.build_date);
+        }
+        Err(error) => {
+            error!("Unable to obtain details about Kubernetes cluster. Error:\n{}", error);
+        }
+    }
 }
 
 /// Initializes a possibly changing implementation of the [log](https://crates.io/crates/log) crate,

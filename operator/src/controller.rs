@@ -38,7 +38,7 @@ use deployment::Error;
 /// # Arguments
 /// - `client` - A Kubernetes client from the `kube` crate. Required to create other resources representing the
 /// final H2O cluster in Kubernetes.
-/// - `default_namespace` - Default namespace to deploy H2O resources to if none is specified explicitly.
+/// - `namespace` - H2O operator is namespace-scoped. H2Os are deployed into the namespace the operator has been deployed to.
 ///
 /// # Examples
 ///
@@ -46,19 +46,19 @@ use deployment::Error;
 ///     let (client, namespace): (Client, String) = deployment::try_default().await?;
 ///     controller::run(client, &namespace).await;
 /// ```
-pub async fn run(client: Client, default_namespace: &str) {
-    let api: Api<H2O> = Api::all(client.clone());
+pub async fn run(client: Client, namespace: &str) {
+    let api: Api<H2O> = Api::namespaced(client.clone(), namespace);
     Controller::new(api.clone(), ListParams::default())
         .owns(api, ListParams::default())
         .run(
             reconcile,
             error_policy,
-            Context::new(ContextData::new(client.clone(), default_namespace.to_string())),
+            Context::new(ContextData::new(client.clone(), namespace.to_string())),
         )
         .for_each(|res| async move {
             match res {
-                Ok(o) => info!("Reconciled {:?}", o),
-                Err(e) => info!("Reconcile failed: {}", e),
+                Ok(_) => {},
+                Err(err) => info!("Failed to reconcile: {}", err),
             };
         })
         .await;
@@ -112,7 +112,8 @@ async fn reconcile(h2o: H2O, context: Context<ContextData>) -> Result<Reconciler
             delete_h2o_deployment(&h2o, &context).await?;
         }
         ControllerAction::Noop => {
-            info!("No action taken for:\n{:?}", &h2o); // Log the whole incoming H2O description
+            let h2o_serialized: String = serde_yaml::to_string(&h2o).unwrap_or(h2o.name());
+            info!("No action taken for an existing deployment:\n{}", h2o_serialized); // Log the whole incoming H2O description
         }
     }
 
@@ -175,6 +176,15 @@ async fn create_h2o_deployment(
     h2o: &H2O,
     context: &Context<ContextData>,
 ) -> Result<ReconcilerAction, Error> {
+    match serde_yaml::to_string(h2o) {
+        Ok(h2o_yaml) => {
+            info!("Attempting to create the following H2O cluster:\n{}", h2o_yaml)
+        }
+        Err(_) => {
+            error!("Attempting to create H2O cluster: {}", h2o.name());
+        }
+    };
+    info!("{}", serde_yaml::to_string(h2o).unwrap());
     let data: &ContextData = context.get_ref();
     let name: String = h2o.metadata.name.clone()
         .ok_or(Error::UserError("Unable to create H2O deployment. No H2O name provided.".to_string()))?;
@@ -187,7 +197,7 @@ async fn create_h2o_deployment(
     tokio::try_join!(deploy_future, add_finalizer_future)?;
     deployment::crd::add_empty_status(data.client.clone(), &name, &data.default_namespace).await.unwrap();
 
-    info!("Deployed H2O '{}'.", &name);
+    info!("H2O '{}' successfully deployed.", &name);
     return Ok(ReconcilerAction {
         requeue_after: Option::None,
     });
@@ -210,6 +220,7 @@ async fn delete_h2o_deployment(
     h2o: &H2O,
     context: &Context<ContextData>,
 ) -> Result<ReconcilerAction, Error> {
+    info!("Attempting to delete H2O deployment: {}", h2o.name());
     let data: &ContextData = context.get_ref();
     let name: &str = h2o.metadata.name.as_ref()
         .ok_or(Error::UserError("Unable to delete H2O deployment. No H2O name provided.".to_string()))?;
