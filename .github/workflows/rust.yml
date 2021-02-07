@@ -50,7 +50,7 @@ jobs:
 
           # Test OPERATOR module
           export KUBECONFIG=$(pwd)/kubeconfigs-generated/kubeconfig-h2o-operator-default.yaml
-          cargo test -p operator --verbose
+          cargo test -p h2o-operator --verbose
 
           # Create new service account for OPERATOR with CRD v1beta1
           # Permissions are on purpose expected to be the same for v1beta1 H2O CRD, therefore the same ClusterRole is used
@@ -59,4 +59,4 @@ jobs:
 
           # Test OPERATOR module with CRD v1beta1 to test out the Red Hat version of the H2O custom resource
           export KUBECONFIG=$(pwd)/kubeconfigs-generated/kubeconfig-h2o-operator-default.yaml
-          cargo test -p operator --verbose
+          cargo test -p h2o-operator --verbose
