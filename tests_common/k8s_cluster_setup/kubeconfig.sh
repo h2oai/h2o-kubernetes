@@ -1,7 +1,8 @@
 #!/bin/bash
+# This script is a modified version of the original to be found at https://github.com/ddiiwoong/kubeconfig-generator
 set -e
 set -o pipefail
- 
+
 # Add user to k8s using service account, the RBAC must be created separately
 if [[ -z "$1" ]] || [[ -z "$2" ]]; then
  echo "usage: $0 <service_account_name> <namespace>"

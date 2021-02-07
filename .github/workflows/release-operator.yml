@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       new_version:
-        description: 'New version'
+        description: 'New version (ignored for patch branches)'
         required: true
 
 env:
@@ -28,7 +28,7 @@ jobs:
         with:
           version: 'latest'
       - uses: actions/checkout@v2
-      - name: Extract current version
+      - name: Find out current version
         id: current-ver
         run: |
           VERSION=$(cat operator/Cargo.toml | sed -n "s/^version\s*=\s*\"\([0-9]*\.[0-9]*\.[0-9]*\)\"$/\1/p")
@@ -40,30 +40,44 @@ jobs:
           # To generate kubeconfigs for specific service accounts, current user must have read rights to the cluster-admin kubeconfig folder
           sudo chown $(id -u):$(id -g) /tmp/output/
 
+          export CLUSTER_ADMIN_KUBECONFIG=$KUBECONFIG
+
+          # Create cluster role and a service account with permissions  and related kubeconfig for CLI module
+          kubectl apply -f cli/tests/permissions/cluster_role.yaml
+          bash tests_common/k8s_cluster_setup/kubeconfig.sh h2o-cli default
+
           # Create cluster role and a service account with permissions and related kubeconfig for DEPLOYMENT MODULE
           kubectl apply -f deployment/tests/permissions/cluster_role.yaml
           bash tests_common/k8s_cluster_setup/kubeconfig.sh h2o-deployment default
 
-          # Create cluster role and a service with permissions  and related kubeconfig for OPERATOR
+          # Create cluster role and a service account with permissions  and related kubeconfig for OPERATOR
           kubectl apply -f operator/tests/permissions/cluster_role.yaml
-          kubectl apply -f operator/bundle/manifests/h2os.h2o.ai.crd.yaml
+          kubectl apply -f operator/crd/h2os.h2o.ai.crd.yaml
           bash tests_common/k8s_cluster_setup/kubeconfig.sh h2o-operator default
 
           # 🅃🄴🅂🅃🅂
           # Each module is tested with kubeconfig reflecting service account with just enough permissions
           # for the given module.
+          #Test CLI module
+          export KUBECONFIG=$(pwd)/kubeconfigs-generated/kubeconfig-h2o-cli-default.yaml
+          cargo test -p h2ok --verbose
 
           # Test DEPLOYMENT module
           export KUBECONFIG=$(pwd)/kubeconfigs-generated/kubeconfig-h2o-deployment-default.yaml
-          cd deployment
-          cargo test --verbose
-          cd ../
+          cargo test -p deployment --verbose
 
           # Test OPERATOR module
           export KUBECONFIG=$(pwd)/kubeconfigs-generated/kubeconfig-h2o-operator-default.yaml
-          cd operator
-          cargo test --verbose
-          cd ../
+          cargo test -p h2o-operator --verbose
+
+          # Create new service account for OPERATOR with CRD v1beta1
+          # Permissions are on purpose expected to be the same for v1beta1 H2O CRD, therefore the same ClusterRole is used
+          export KUBECONFIG=$CLUSTER_ADMIN_KUBECONFIG
+          kubectl apply -f operator/bundle/manifests/h2os.h2o.ai.crd.yaml # Overrides previous H2O CRDs
+
+          # Test OPERATOR module with CRD v1beta1 to test out the Red Hat version of the H2O custom resource
+          export KUBECONFIG=$(pwd)/kubeconfigs-generated/kubeconfig-h2o-operator-default.yaml
+          cargo test -p h2o-operator --verbose
       - name: Release build
         run: rustup target add ${{ env.TARGET_LINUX }} && cargo build -p ${{ env.RELEASED_ARTIFACT_NAME }} --release --target ${{ env.TARGET_LINUX }}
       - name: Create ${{ env.TARGET_LINUX }} ZIP package
@@ -74,20 +88,22 @@ jobs:
           name: ${{ env.TARGET_LINUX }}
           path: ${{ env.RELEASED_ARTIFACT_NAME }}_${{ env.TARGET_LINUX }}.zip
 
-  build-docker:
+  release-docker-images:
     needs: [build-linux]
-    name: Build Operator Dockerfile
+    name: Release OpenShift specific Docker images
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 300
     steps:
       - uses: actions/checkout@v2
-      - name: Extract current version
+      - name: Find out current version
         id: current-ver
         run: |
           VERSION=$(cat operator/Cargo.toml | sed -n "s/^version\s*=\s*\"\([0-9]*\.[0-9]*\.[0-9]*\)\"$/\1/p")
           echo "::set-output name=version::$VERSION"
       - name: Build Operator Dockerfile
         run: |
+          # Push and publish Docker image with H2O Operator binary first, as this is required for the bundle step to pass validation tests.
+          # Build, push, wait for validations and publish
           pip install requests argparse
           echo "${{ secrets.OPERATOR_RED_HAT_REGISTRY_KEY }}" | docker login -u unused scan.connect.redhat.com --password-stdin
           docker build -t ${{ secrets.OPERATOR_RED_HAT_SCAN_TAG_PREFIX }}${{ env.OPERATOR_NAME }}:${{steps.current-ver.outputs.version}} -f operator/docker/Dockerfile-operator . --build-arg OPERATOR_VERSION=${{ steps.current-ver.outputs.version }} --no-cache
@@ -95,6 +111,8 @@ jobs:
           echo $OPERATOR_DIGEST
           python operator/release/red_hat_docker_certification.py --api_key ${{ secrets.RED_HAT_CONNECT_API_KEY }} --pid ${{ secrets.OPERATOR_RED_HAT_PID }} --tag ${{ steps.current-ver.outputs.version }} $OPERATOR_DIGEST
           docker logout
+
+          # Build and push H2O Operator bundle, wait for validations to pass and publish it
           echo "${{ secrets.OPERATOR_BUNDLE_RED_HAT_REGISTRY_KEY }}" | docker login -u unused scan.connect.redhat.com --password-stdin
           CREATED_DATE=$(date --utc +%FT%T%Z)
           sed -i "s/<created-date>/$CREATED_DATE/g" operator/bundle/manifests/h2o-operator.clusterserviceversion.yaml
@@ -106,14 +124,21 @@ jobs:
           python operator/release/red_hat_docker_certification.py --api_key ${{ secrets.RED_HAT_CONNECT_API_KEY }} --pid ${{ secrets.OPERATOR_BUNDLE_RED_HAT_PID }} --tag ${{ steps.current-ver.outputs.version }} $BUNDLE_DIGEST
           docker logout
 
-  gh-release:
-    name: Create GitHub Release
+          # Docker Hub contains the same operator binary as OpenShift repository
+          # Red Hat services are unstable and error-prone, push to docker hub last
+          docker tag ${{ secrets.OPERATOR_RED_HAT_SCAN_TAG_PREFIX }}${{ env.OPERATOR_NAME }}:${{steps.current-ver.outputs.version}} h2oai/h2o-k8s-operator:${{steps.current-ver.outputs.version}}
+          echo "${{ secrets.H2O_DOCKER_HUB_PASSWORD }}" | docker login -u ${{ secrets.H2O_DOCKER_HUB_LOGIN }} scan.connect.redhat.com --password-stdin
+          docker push h2oai/h2o-k8s-operator:${{steps.current-ver.outputs.version}}
+          docker logout
+
+  github-release:
+    name: GitHub Release
     runs-on: ubuntu-latest
-    needs: [ build-docker ]
+    needs: [ release-docker-images ]
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
-      - name: Extract current version
+      - name: Find out current version
         id: current-ver
         run: |
           VERSION=$(cat operator/Cargo.toml | sed -n "s/^version\s*=\s*\"\([0-9]*\.[0-9]*\.[0-9]*\)\"$/\1/p")
@@ -142,20 +167,122 @@ jobs:
           asset_path: ./${{ env.RELEASED_ARTIFACT_NAME }}_${{ env.TARGET_LINUX }}.zip
           asset_name: ${{ env.TARGET_LINUX }}
           asset_content_type: application
+      - name: Upload v1 CRD # version of CRD resource, not H2O resource
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: operator/crd/h2os.h2o.ai.crd.yaml
+          asset_name: h2os.h2o.ai.crd.v1.yaml
+          asset_content_type: application/x-yaml
+      - name: Upload v1beta1 CRD # version of CRD resource, not H2O resource
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: operator/bundle/manifests/h2os.h2o.ai.crd.yaml
+          asset_name: h2os.h2o.ai.crd.v1beta1.yaml
+          asset_content_type: application/x-yaml
+      - name: Upload v1beta1 CRD # version of CRD resource, not H2O resource
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: operator/tests/permissions/cluster_role.yaml
+          asset_name: h2o-operator-role.yaml
+          asset_content_type: application/x-yaml
 
-  push-new-version-git:
-    needs: [gh-release]
+  # If the build is triggered on master, create a patch branch for that release
+  create-patch-branch:
+    needs: [github-release]
     runs-on: ubuntu-latest
+    if: ${{ github.ref == 'refs/heads/master' }}
+    name: Create patch branch
     steps:
       - uses: actions/checkout@v2
-      - name: Bump up operator version
-        run: sed -i "s/version\s=\s\"\(0.1.0\)\"/version = \"${{ github.event.inputs.new_version }}\"/g" operator/Cargo.toml
-      - name: Commit new version
+      - name: Find out current version
+        id: current-ver
+        run: |
+          VERSION=$(cat operator/Cargo.toml | sed -n "s/^version\s*=\s*\"\([0-9]*\.[0-9]*\.[0-9]*\)\"$/\1/p")
+          echo "::set-output name=version::$VERSION"
+      - name: Create Branch
+        uses: peterjgrainger/action-create-branch@v2.0.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          branch: operator-patch-${{ steps.current-ver.outputs.version }}
+      - name: Next SemVer for patch branch
+        uses: WyriHaximus/github-action-next-semvers@v1.0
+        id: next-patch
+        with:
+          version: ${{ steps.current-ver.outputs.version }}
+      - name: Bump up version for patch branch
+        run: sed -i "s/version\s=\s\"\(${{ steps.current-ver.outputs.version }}\)\"/version = \"${{ steps.next-patch.outputs.patch }}\"/g" operator/Cargo.toml
+      - name: Commit new version to patch branch
         uses: EndBug/add-and-commit@v7.0.0
         with:
           author_name: 'Operator Release'
           author_email: '<pavel.pscheidl@h2o.ai>'
-          message: 'Version ${{ github.event.inputs.new_version }}'
+          message: Operator version ${{ steps.next-patch.outputs.patch }}
+          branch: operator-patch-${{ steps.current-ver.outputs.version }}
+          add: 'operator/Cargo.toml'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # If the builds is triggered in master branch, set new version on master according to user's input.
+  update-master-version:
+    needs: [github-release]
+    name: Update user-defined version in master branch
+    runs-on: ubuntu-latest
+    if: ${{ github.ref == 'refs/heads/master' }}
+    steps:
+      - uses: actions/checkout@v2
+      - name: Find out current version
+        id: current-ver
+        run: |
+          VERSION=$(cat operator/Cargo.toml | sed -n "s/^version\s*=\s*\"\([0-9]*\.[0-9]*\.[0-9]*\)\"$/\1/p")
+          echo "::set-output name=version::$VERSION"
+      - name: Bump up operator version
+        run: sed -i "s/version\s=\s\"\(${{ steps.current-ver.outputs.version }}\)\"/version = \"${{ github.event.inputs.new_version }}\"/g" operator/Cargo.toml
+      - name: Commit new version to current branch
+        uses: EndBug/add-and-commit@v7.0.0
+        with:
+          author_name: 'Operator Release'
+          author_email: '<pavel.pscheidl@h2o.ai>'
+          message: Operator version ${{ github.event.inputs.new_version }}
+          add: 'operator/Cargo.toml'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # If the build is triggered on non-master branch (patch), update patch version on that branch after release.
+  update-patch-version:
+    needs: [github-release]
+    name: Update version in patch branch
+    runs-on: ubuntu-latest
+    if: ${{ github.ref != 'refs/heads/master' }}
+    steps:
+      - uses: actions/checkout@v2
+      - name: Find out current version
+        id: current-ver
+        run: |
+          VERSION=$(cat operator/Cargo.toml | sed -n "s/^version\s*=\s*\"\([0-9]*\.[0-9]*\.[0-9]*\)\"$/\1/p")
+          echo "::set-output name=version::$VERSION"
+      - name: Next SemVer for patch branch
+        uses: WyriHaximus/github-action-next-semvers@v1.0
+        id: next-patch
+        with:
+          version: ${{ steps.current-ver.outputs.version }}
+      - name: Bump up operator version
+        run: sed -i "s/version\s=\s\"\(${{ steps.current-ver.outputs.version }}\)\"/version = \"${{ steps.next-patch.outputs.patch }}\"/g" operator/Cargo.toml
+      - name: Commit new version to current branch
+        uses: EndBug/add-and-commit@v7.0.0
+        with:
+          author_name: 'Operator Release'
+          author_email: '<pavel.pscheidl@h2o.ai>'
+          message: Operator version ${{ steps.next-patch.outputs.patch }}
           add: 'operator/Cargo.toml'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

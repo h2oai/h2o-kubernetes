@@ -1,10 +1,6 @@
 name: Tests
 
-on:
-  push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
+on: [create, pull_request]
 
 env:
   CARGO_TERM_COLOR: always
@@ -26,6 +22,8 @@ jobs:
           # To generate kubeconfigs for specific service accounts, current user must have read rights to the cluster-admin kubeconfig folder
           sudo chown $(id -u):$(id -g) /tmp/output/
 
+          export CLUSTER_ADMIN_KUBECONFIG=$KUBECONFIG
+
           # Create cluster role and a service account with permissions  and related kubeconfig for CLI module
           kubectl apply -f cli/tests/permissions/cluster_role.yaml
           bash tests_common/k8s_cluster_setup/kubeconfig.sh h2o-cli default
@@ -34,7 +32,7 @@ jobs:
           kubectl apply -f deployment/tests/permissions/cluster_role.yaml
           bash tests_common/k8s_cluster_setup/kubeconfig.sh h2o-deployment default
 
-          # Create cluster role and a service with permissions  and related kubeconfig for OPERATOR
+          # Create cluster role and a service account with permissions  and related kubeconfig for OPERATOR
           kubectl apply -f operator/tests/permissions/cluster_role.yaml
           kubectl apply -f operator/crd/h2os.h2o.ai.crd.yaml
           bash tests_common/k8s_cluster_setup/kubeconfig.sh h2o-operator default
@@ -44,18 +42,21 @@ jobs:
           # for the given module.
           #Test CLI module
           export KUBECONFIG=$(pwd)/kubeconfigs-generated/kubeconfig-h2o-cli-default.yaml
-          cd cli
-          cargo test --verbose
-          cd ../
+          cargo test -p h2ok --verbose
 
           # Test DEPLOYMENT module
           export KUBECONFIG=$(pwd)/kubeconfigs-generated/kubeconfig-h2o-deployment-default.yaml
-          cd deployment
-          cargo test --verbose
-          cd ../
+          cargo test -p deployment --verbose
 
           # Test OPERATOR module
           export KUBECONFIG=$(pwd)/kubeconfigs-generated/kubeconfig-h2o-operator-default.yaml
-          cd operator
-          cargo test --verbose
-          cd ../
+          cargo test -p h2o-operator --verbose
+
+          # Create new service account for OPERATOR with CRD v1beta1
+          # Permissions are on purpose expected to be the same for v1beta1 H2O CRD, therefore the same ClusterRole is used
+          export KUBECONFIG=$CLUSTER_ADMIN_KUBECONFIG
+          kubectl apply -f operator/bundle/manifests/h2os.h2o.ai.crd.yaml # Overrides previous H2O CRDs
+
+          # Test OPERATOR module with CRD v1beta1 to test out the Red Hat version of the H2O custom resource
+          export KUBECONFIG=$(pwd)/kubeconfigs-generated/kubeconfig-h2o-operator-default.yaml
+          cargo test -p h2o-operator --verbose

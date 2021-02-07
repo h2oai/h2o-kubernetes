@@ -13,6 +13,8 @@ Two binaries (`cli`, `operator`) and one library (`deployment`) with common code
 
 For code formatting, please use [rustfmt](https://github.com/rust-lang/rustfmt).
 
+For detailed description of each project, please refer to the
+
 ## Building, testing and running
 
 - Development build (whole workspace) : `cargo build`
