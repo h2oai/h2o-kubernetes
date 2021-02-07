@@ -1,10 +1,6 @@
 name: Tests
 
-on:
-  push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
+on: [push, pull_request]
 
 env:
   CARGO_TERM_COLOR: always
@@ -46,21 +42,15 @@ jobs:
           # for the given module.
           #Test CLI module
           export KUBECONFIG=$(pwd)/kubeconfigs-generated/kubeconfig-h2o-cli-default.yaml
-          cd cli
-          cargo test --verbose
-          cd ../
+          cargo test -p cli --verbose
 
           # Test DEPLOYMENT module
           export KUBECONFIG=$(pwd)/kubeconfigs-generated/kubeconfig-h2o-deployment-default.yaml
-          cd deployment
-          cargo test --verbose
-          cd ../
+          cargo test -p deployment --verbose
 
           # Test OPERATOR module
           export KUBECONFIG=$(pwd)/kubeconfigs-generated/kubeconfig-h2o-operator-default.yaml
-          cd operator
-          cargo test --verbose
-          cd ../
+          cargo test -p operator --verbose
 
           # Create new service account for OPERATOR with CRD v1beta1
           # Permissions are on purpose expected to be the same for v1beta1 H2O CRD, therefore the same ClusterRole is used

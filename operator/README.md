@@ -92,3 +92,7 @@ On start, the `h2o-operator` binary will look for `KUBECONFIG` variable. If such
 kubeconfig file with enough permissions to run the operator, it will try to detect or create the H2O custom resource inside 
 the Kubernetes cluster and start serving requests. It can be deployed either directly into Kubernetes inside a Pod or ran
 externally.
+
+## Technical documentation
+
+Technical documentation signpost is to be found in the [documentation](documentation/README.md) folder.
