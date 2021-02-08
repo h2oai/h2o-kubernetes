@@ -92,7 +92,7 @@ enum ControllerAction {
     /// Delete resources of an existing H2O Cluster
     Delete,
     /// Updating existing H2O deployment is not supported - once H2O is clustered, it is immutable. Any events requiring on actions.
-    Noop,
+    Verify,
 }
 
 /// Reconciliation logic router, called by the controller once per each event.
