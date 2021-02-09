@@ -31,8 +31,12 @@ After creating the resource by using`kubectl apply -f h2o.yaml`, all the necessa
 Deletion is as simple as `kubectl delete h2o h2o-test`.
 
 ## Deployment
-The operator is not officially released as a Docker container yet, nor is it available on OperatorHub or as a Red Hat Certified operator. In order to use it, a Docker container must be built first.
+Operator images are available on:
 
+- [Docker hub](https://hub.docker.com/repository/docker/h2oai/h2o-k8s-operator)
+- [OpenShift](https://catalog.redhat.com/software/containers/h2oai/h2o-operator/5fe0df48ac3db90370a26893) as a certified operator.
+
+Or build from scratch:
 ```shell
 docker build --build-arg H2O_VERSION=custom -t h2o-operator:custom -f docker/public/Dockerfile-h2o-release build/
 ```
