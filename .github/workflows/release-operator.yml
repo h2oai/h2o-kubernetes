@@ -127,7 +127,7 @@ jobs:
           # Docker Hub contains the same operator binary as OpenShift repository
           # Red Hat services are unstable and error-prone, push to docker hub last
           docker tag ${{ secrets.OPERATOR_RED_HAT_SCAN_TAG_PREFIX }}${{ env.OPERATOR_NAME }}:${{steps.current-ver.outputs.version}} h2oai/h2o-k8s-operator:${{steps.current-ver.outputs.version}}
-          echo "${{ secrets.H2O_DOCKER_HUB_PASSWORD }}" | docker login -u ${{ secrets.H2O_DOCKER_HUB_LOGIN }} scan.connect.redhat.com --password-stdin
+          echo "${{ secrets.H2O_DOCKER_HUB_PASSWORD }}" | docker login -u ${{ secrets.H2O_DOCKER_HUB_LOGIN }} --password-stdin
           docker push h2oai/h2o-k8s-operator:${{steps.current-ver.outputs.version}}
           docker logout
 
