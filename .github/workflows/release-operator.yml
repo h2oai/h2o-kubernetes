@@ -121,7 +121,7 @@ jobs:
           docker build -t ${{ secrets.OPERATOR_BUNDLE_RED_HAT_SCAN_TAG_PREFIX }}${{ env.OPERATOR_NAME }}-bundle:${{steps.current-ver.outputs.version}} -f operator/docker/Dockerfile-operator-bundle . --no-cache
           BUNDLE_DIGEST=$(docker push ${{ secrets.OPERATOR_BUNDLE_RED_HAT_SCAN_TAG_PREFIX }}${{ env.OPERATOR_NAME }}-bundle:${{ steps.current-ver.outputs.version }} | sed -n 's/.*\(sha256:[a-zA-Z0-9]*\).*$/\1/p')
           echo $BUNDLE_DIGEST
-          python operator/release/red_hat_docker_certification.py --api_key ${{ secrets.RED_HAT_CONNECT_API_KEY }} --pid ${{ secrets.OPERATOR_BUNDLE_RED_HAT_PID }} --tag ${{ steps.current-ver.outputs.version }} $BUNDLE_DIGEST
+          echo "H2O Operator Bundle uploaded. Red Hat doesn't support automated publishing of bundle images yet - publish manually !"
           docker logout
 
           # Docker Hub contains the same operator binary as OpenShift repository
