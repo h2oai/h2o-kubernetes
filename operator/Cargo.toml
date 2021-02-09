@@ -1,6 +1,6 @@
 [package]
 name = "h2o-operator"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Pavel Pscheidl <pavel@h2o.ai>", "Michal Kurka <michal.kurka@h2o.ai>"]
 edition = "2018"
 
