@@ -70,7 +70,7 @@ async fn send_flatfile(pod_ips: &[String], http_client: &HyperClient<HttpConnect
         let pod_ip = &pod_ips[pod_index];
         let request = Request::builder()
             .method(Method::POST)
-            .uri(format!("http://{}:8080/clustering/flatfile", pod_ip))
+            .uri(format!("http://{}:54321", pod_ip))
             .header(CONTENT_TYPE, "text/plain")
             .body(Body::from("")).unwrap(); // TODO: remove unwrap and send flatfile
         http_client.request(request)
@@ -112,7 +112,7 @@ async fn wait_h2o_clustered(http_client: &HyperClient<HttpConnector>, pod_ips: &
         let cluster_status_response = http_client.request(cluster_status_request).await;
         match cluster_status_response {
             Ok(status) => {
-                if (status.status() != 200) {
+                if status.status() != 200 {
                     tokio::time::sleep(Duration::from_secs(1)).await;
                     continue 'clustering;
                 } else {

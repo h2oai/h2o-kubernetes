@@ -37,6 +37,8 @@ pub enum Error {
     TemplateSerializationError(String),
     #[error("Resource watch failed. Reason: {0}")]
     WatcherError(WatcherError),
+    #[error("Error during H2O subresources deployment: {0}")]
+    DeploymentError(String),
 }
 
 impl From<KubeError> for Error {

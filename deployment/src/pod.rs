@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use futures::{StreamExt, TryStreamExt};
-use k8s_openapi::api::core::v1::{Pod, PersistentVolume};
+use k8s_openapi::api::core::v1::{Pod};
 use kube::{Api, Client};
 use kube::api::{DeleteParams, ListParams, Meta, PostParams};
 use kube::client::Status;
@@ -30,13 +30,8 @@ spec:
       ports:
         - containerPort: 54321
           protocol: TCP
-      readinessProbe:
-        httpGet:
-          path: /kubernetes/isLeaderNode
-          port: 8081
-        initialDelaySeconds: 5
-        periodSeconds: 5
-        failureThreshold: 1
+        - containerPort: 54322
+          protocol: TCP
       resources:
         limits:
           cpu: '<num-cpu>'
@@ -332,6 +327,22 @@ async fn wait_pods_deleted(client: Client, name: &str, namespace: &str) -> Resul
     };
     return Result::Ok(());
 }
+
+pub fn get_pod_ip(pod: &Pod) -> String {
+
+    if let Some(status) = &pod.status{
+        if let Some(ip) = status.pod_ip.as_ref(){
+            return format!("{} : {}", pod.metadata.name.clone().unwrap_or("Unnamed_pod".to_owned()), ip);
+        }
+
+        if pod.metadata.name.is_some(){
+            return pod.metadata.name.clone().unwrap();
+        }
+    }
+
+    "Unknown pod name with unknown IP.".to_owned()
+}
+
 
 #[cfg(test)]
 mod tests {
