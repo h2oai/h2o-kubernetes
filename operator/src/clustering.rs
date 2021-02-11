@@ -1,4 +1,4 @@
-use std::borrow::{Borrow, BorrowMut};
+use std::borrow::{BorrowMut};
 use std::net::{IpAddr, SocketAddr};
 
 use futures::StreamExt;
@@ -10,8 +10,10 @@ use kube::{Api, Client};
 use kube::api::PatchParams;
 use serde::{Deserialize, Serialize};
 use tokio::time::Duration;
+use log::info;
 
 use deployment::Error;
+use std::str::FromStr;
 
 pub async fn cluster_pods(client: Client, namespace: &str, pod_label: &str, expected_pod_count: usize) {
     let pod_has_ip_check: fn(&Pod) -> bool = |pod| {
@@ -64,15 +66,20 @@ pub async fn cluster_pods(client: Client, namespace: &str, pod_label: &str, expe
 }
 
 async fn send_flatfile(pod_ips: &[String], http_client: &HyperClient<HttpConnector>) -> bool { // TODO: Parse to IpAddr
-
+    let pod_addrs: Vec<IpAddr> = pod_ips.iter()
+        .map(|ip|{
+            IpAddr::from_str(ip).unwrap()
+        }).collect();
+    let flatfile: String = create_flatfile(&pod_addrs);
     // Send all flat files to all H2O nodes concurrently.
     futures::stream::iter(0..pod_ips.len()).map(|pod_index| {
         let pod_ip = &pod_ips[pod_index];
+        info!("Sending request to: {}", format!("http://{}:8080/clustering/flatfile", pod_ip));
         let request = Request::builder()
             .method(Method::POST)
-            .uri(format!("http://{}:54321", pod_ip))
+            .uri(format!("http://{}:{}/clustering/flatfile", pod_ip, deployment::pod::H2O_CLUSTERING_PORT))
             .header(CONTENT_TYPE, "text/plain")
-            .body(Body::from("")).unwrap(); // TODO: remove unwrap and send flatfile
+            .body(Body::from(flatfile.clone())).unwrap(); // TODO: remove unwrap
         http_client.request(request)
     }).buffer_unordered(pod_ips.len())
         .map(|result| {

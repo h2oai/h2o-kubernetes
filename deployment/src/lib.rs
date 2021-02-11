@@ -20,6 +20,7 @@ pub mod service;
 pub mod statefulset;
 pub mod client;
 pub mod pod;
+pub mod configmap;
 
 /// Error during handling Kubernetes cluster-related requests.
 #[derive(ThisError, Debug)]

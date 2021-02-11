@@ -9,6 +9,12 @@ use log::{info, error, LevelFilter};
 use simple_logger::SimpleLogger;
 
 use deployment::Error;
+use deployment::configmap;
+use std::path::{PathBuf, Path};
+use std::str::FromStr;
+use k8s_openapi::api::core::v1::ConfigMap;
+use kube::api::Meta;
+use kube::client::Status;
 
 mod controller;
 mod clustering;
@@ -48,6 +54,7 @@ async fn main() -> Result<(), Error> {
     info!("H2O Kubernetes Operator");
     let (client, namespace): (Client, String) = deployment::client::try_default().await?;
     print_startup_diagnostics(&client, &namespace).await;
+    create_mandatory_resources(client.clone(), &namespace).await;
     controller::run(client.clone(), &namespace).await;
     Ok(())
 }
@@ -66,6 +73,45 @@ async fn print_startup_diagnostics(client: &Client, namespace: &str) {
             error!("Unable to obtain details about Kubernetes cluster. Error:\n{}", error);
         }
     }
+}
+
+async fn create_mandatory_resources(client: Client, namespace: &str){
+    let assisted_clustering_jar_var: String = std::env::var(configmap::H2O_CLUSTERING_JAR_PATH_KEY)
+        .expect(&format!("H2O Clustering module JAR path environment variable '{}' not present. Search in current context folder failed.\
+                This is most likely caused by misconfigured environment/docker image this operator is running in.", configmap::H2O_CLUSTERING_JAR_PATH_KEY));
+
+    let clustering_module_path_buf: PathBuf = PathBuf::from_str(&assisted_clustering_jar_var)
+        .expect(&format!("'{}' is not a valid path to H2O assisted clustering module jar.", &assisted_clustering_jar_var));
+    let clustering_module_path : &Path = clustering_module_path_buf.as_path();
+
+    if !clustering_module_path.is_file(){
+        panic!("Path leading to H2O assisted clustering module JAR {} does not represent a file.", &assisted_clustering_jar_var);
+    }
+
+    if configmap::exists(client.clone(), namespace).await {
+        info!("Existing configmap with H2O assisted clustering module found, attempting to delete.");
+        match configmap::delete(client.clone(), namespace).await {
+            Ok(_) => {
+                info!("Existing configmap with H2O assisted clustering module successfully deleted.");
+            }
+            Err(error) => {
+                panic!("Unable to delete existing configmap with H2O assisted clustering module. Error:\n{}", error)
+            }
+        }
+    }
+
+    let configmap_result: Result<ConfigMap, Error> = configmap::create_clustering_configmap(client, namespace, clustering_module_path).await;
+
+    match configmap_result {
+        Ok(configmap) => {
+            info!("Successfully created ConfigMap '{}' with H2O assisted clustering module jar.", configmap.name());
+        }
+        Err(error) => {
+            error!("Unable to create ConfigMap with H2O assisted clustering module jar. Make sure there are enough permissions inside the cluster. Error:\n{}", error);
+            std::process::exit(1);
+        }
+    }
+
 }
 
 /// Initializes a possibly changing implementation of the [log](https://crates.io/crates/log) crate,

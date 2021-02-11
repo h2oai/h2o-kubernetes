@@ -11,7 +11,6 @@ use deployment::crd::{H2O, H2OSpec};
 use deployment::Error;
 use crate::clustering;
 use k8s_openapi::api::core::v1::Pod;
-use futures::future::err;
 
 /// Creates and runs an instance of `kube_runtime::Controller` internally, endlessly waiting for incoming events
 /// on CRDs handled by this operator. Unless there is an error, this function never returns.
