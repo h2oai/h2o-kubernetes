@@ -259,12 +259,9 @@ async fn delete_h2o_deployment(
         .ok_or(Error::UserError("Unable to delete H2O deployment. No H2O name provided.".to_string()))?;
     let namespace: &str = h2o.meta().namespace.as_ref()
         .ok_or(Error::UserError("Unable to delete H2O deployment. No namespace provided.".to_string()))?;
-
-    let statefulset_future = deployment::statefulset::delete(data.client.clone(), namespace, name);
-    let service_future = deployment::headless_service::delete(data.client.clone(), namespace, name);
+    deployment::service::delete(data.client.clone(), namespace, name).await.unwrap();
     // TODO: Wait for resources to be deleted before exitting.
 
-    tokio::try_join!(statefulset_future, service_future)?;
     deployment::finalizer::remove_finalizer(data.client.clone(), name, namespace).await?;
 
     info!("Deleted H2O '{}'.", &name);

@@ -12,7 +12,9 @@ use log::debug;
 use crate::crd::H2OSpec;
 use crate::Error;
 
+pub const H2O_DEFAULT_PORT: u16 = 54321;
 pub const H2O_CLUSTERING_PORT: u16 = 8080;
+
 
 const POD_TEMPLATE: &str = r#"
 apiVersion: v1

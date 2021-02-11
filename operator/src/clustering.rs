@@ -24,8 +24,8 @@ pub async fn cluster_pods(client: Client, namespace: &str, pod_label: &str, expe
     };
 
     let created_pods: Vec<Pod> = deployment::pod::wait_pods_created(client.clone(), pod_label, namespace,
-                                                          expected_pod_count as usize,
-                                                          pod_has_ip_check,
+                                                                    expected_pod_count as usize,
+                                                                    pod_has_ip_check,
     ).await;
 
     let pod_ips: Vec<String> = created_pods.iter()
@@ -38,8 +38,13 @@ pub async fn cluster_pods(client: Client, namespace: &str, pod_label: &str, expe
         })
         .collect();
 
+    let pod_addrs: Vec<IpAddr> = pod_ips.iter()
+        .map(|ip| {
+            IpAddr::from_str(ip).unwrap()
+        }).collect();
     let http_client: HyperClient<HttpConnector> = HyperClient::new();
-    send_flatfile(pod_ips.as_slice(), &http_client).await;
+    wait_clustering_api_online(&pod_addrs, &http_client).await;
+    send_flatfile(&pod_addrs, &http_client).await;
     let leader_node_timeout = tokio::time::timeout(Duration::from_secs(180), wait_h2o_clustered(&http_client, &pod_ips)).await;
     let leader_node_socket_addr: SocketAddr = leader_node_timeout.unwrap().unwrap(); // TODO: Remove unwrap
 
@@ -65,19 +70,46 @@ pub async fn cluster_pods(client: Client, namespace: &str, pod_label: &str, expe
     deployment::service::create(client, namespace, pod_label, &format!("{}-leader", pod_label)).await.unwrap(); // TODO: Remove unwrap
 }
 
-async fn send_flatfile(pod_ips: &[String], http_client: &HyperClient<HttpConnector>) -> bool { // TODO: Parse to IpAddr
-    let pod_addrs: Vec<IpAddr> = pod_ips.iter()
-        .map(|ip|{
-            IpAddr::from_str(ip).unwrap()
-        }).collect();
-    let flatfile: String = create_flatfile(&pod_addrs);
+async fn wait_clustering_api_online(pod_ips: &[IpAddr], http_client: &HyperClient<HttpConnector>) {
+    let pod_api_call = |pod_ip: &IpAddr| {
+        let request: Request<Body> = Request::builder()
+            .method(Method::GET)
+            .uri(format!("http://{}:{}/cluster/status", pod_ip, deployment::pod::H2O_CLUSTERING_PORT))
+            .body(Body::empty()).unwrap();
+        http_client.request(request)
+    };
+
+    let mut all_pods_apis_ready: bool = false;
+
+    while !all_pods_apis_ready {
+        all_pods_apis_ready = futures::stream::iter(0..pod_ips.len())
+            .map(|pod_ip_idx| {
+                pod_api_call(&pod_ips[pod_ip_idx])
+            })
+            .buffer_unordered(pod_ips.len())
+            .map(|response| {
+                let result = match response {
+                    Ok(response) => { response.status() == 204 }
+                    Err(_) => { false }
+                };
+                result
+            })
+            .fold(true, |r1, r2| {
+                futures::future::ready(r1 && r2)
+            }).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+}
+
+async fn send_flatfile(pod_ips: &[IpAddr], http_client: &HyperClient<HttpConnector>) -> bool { // TODO: Parse to IpAddr
+    let flatfile: String = create_flatfile(pod_ips);
     // Send all flat files to all H2O nodes concurrently.
     futures::stream::iter(0..pod_ips.len()).map(|pod_index| {
         let pod_ip = &pod_ips[pod_index];
-        info!("Sending request to: {}", format!("http://{}:8080/clustering/flatfile", pod_ip));
+        info!("Sending flatfile to: {}", format!("http://{}:8080/clustering/flatfile", pod_ip.to_string()));
         let request = Request::builder()
             .method(Method::POST)
-            .uri(format!("http://{}:{}/clustering/flatfile", pod_ip, deployment::pod::H2O_CLUSTERING_PORT))
+            .uri(format!("http://{}:{}/clustering/flatfile", pod_ip.to_string(), deployment::pod::H2O_CLUSTERING_PORT))
             .header(CONTENT_TYPE, "text/plain")
             .body(Body::from(flatfile.clone())).unwrap(); // TODO: remove unwrap
         http_client.request(request)
