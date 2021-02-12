@@ -11,6 +11,7 @@ use log::debug;
 
 use crate::crd::H2OSpec;
 use crate::Error;
+use k8s_openapi::List;
 
 pub const H2O_DEFAULT_PORT: u16 = 54321;
 pub const H2O_CLUSTERING_PORT: u16 = 8080;
@@ -285,7 +286,7 @@ pub async fn wait_pods_created<F>(client: Client, pod_label: &str, namespace: &s
     return pods;
 }
 
-async fn wait_pods_deleted(client: Client, name: &str, namespace: &str) -> Result<(), Error> {
+pub async fn wait_pods_deleted(client: Client, name: &str, namespace: &str) -> Result<(), Error> {
     let pod_api: Api<Pod> = Api::namespaced(client.clone(), namespace);
     let pod_list_params: ListParams = ListParams::default()
         .labels(&format!("app={}", name));
@@ -327,6 +328,13 @@ pub fn get_pod_ip(pod: &Pod) -> String {
     }
 
     "Unknown pod name with unknown IP.".to_owned()
+}
+
+pub async fn delete_pods_label(client: Client, namespace: &str, label: &str){
+    let api: Api<Pod> = Api::namespaced(client, namespace);
+    let pods_list_params: ListParams = ListParams::default()
+        .labels(&format!("app={}", label));
+    let x = api.delete_collection(&DeleteParams::default(), &pods_list_params).await;
 }
 
 

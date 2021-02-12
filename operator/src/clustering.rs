@@ -3,7 +3,7 @@ use std::net::{IpAddr, SocketAddr};
 
 use futures::StreamExt;
 use hyper::{Body, Client as HyperClient, Method, Request, Response, StatusCode};
-use hyper::client::{HttpConnector, ResponseFuture};
+use hyper::client::{HttpConnector};
 use hyper::header::CONTENT_TYPE;
 use k8s_openapi::api::core::v1::Pod;
 use kube::{Api, Client};
@@ -28,23 +28,20 @@ pub async fn cluster_pods(client: Client, namespace: &str, pod_label: &str, expe
                                                                     pod_has_ip_check,
     ).await;
 
-    let pod_ips: Vec<String> = created_pods.iter()
+    let pod_ips: Vec<IpAddr> = created_pods.iter()
         .map(|pod| {
-            pod.status.as_ref()
+            let pod_ip = pod.status.as_ref()
                 .expect("Pod expected to have a status entry.")
                 .pod_ip.as_ref()
-                .expect("Pod expected to have ClusterIP assigned.")
-                .clone()
+                .expect("Pod expected to have ClusterIP assigned.");
+            IpAddr::from_str(pod_ip).unwrap()
         })
         .collect();
 
-    let pod_addrs: Vec<IpAddr> = pod_ips.iter()
-        .map(|ip| {
-            IpAddr::from_str(ip).unwrap()
-        }).collect();
+
     let http_client: HyperClient<HttpConnector> = HyperClient::new();
-    wait_clustering_api_online(&pod_addrs, &http_client).await;
-    send_flatfile(&pod_addrs, &http_client).await;
+    wait_clustering_api_online(&pod_ips, &http_client).await;
+    send_flatfile(&pod_ips, &http_client).await;
     let leader_node_timeout = tokio::time::timeout(Duration::from_secs(180), wait_h2o_clustered(&http_client, &pod_ips)).await;
     let leader_node_socket_addr: SocketAddr = leader_node_timeout.unwrap().unwrap(); // TODO: Remove unwrap
 
@@ -140,7 +137,7 @@ struct H2OClusterStatus {
     unhealthy_nodes: Vec<String>,
 }
 
-async fn wait_h2o_clustered(http_client: &HyperClient<HttpConnector>, pod_ips: &[String]) -> Result<SocketAddr, Error> {
+async fn wait_h2o_clustered(http_client: &HyperClient<HttpConnector>, pod_ips: &[IpAddr]) -> Result<SocketAddr, Error> {
     let h2o_pod_ip = pod_ips.get(0).expect("Expected H2O cluster to have at least one node."); // TODO: Rule out this possibility of empty cluster - add a proper reaction
 
     let cluster_status: H2OClusterStatus;
@@ -152,7 +149,7 @@ async fn wait_h2o_clustered(http_client: &HyperClient<HttpConnector>, pod_ips: &
         match cluster_status_response {
             Ok(status) => {
                 if status.status() != 200 {
-                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    tokio::time::sleep(Duration::from_millis(100)).await;
                     continue 'clustering;
                 } else {
                     cluster_status = serde_json::from_slice(&hyper::body::to_bytes(status.into_body()).await.unwrap()).unwrap();

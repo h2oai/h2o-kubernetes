@@ -10,11 +10,11 @@ metadata:
   name: <name>
   namespace: <namespace>
   labels:
-    app: <pod_label>
+    app: <name>
 spec:
   type: ClusterIP
   selector:
-    h2o_leader_node_pod: <name>
+    h2o_leader_node_pod: <pod_label>
   ports:
   - protocol: TCP
     port: 80

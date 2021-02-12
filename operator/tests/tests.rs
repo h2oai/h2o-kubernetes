@@ -40,7 +40,7 @@ async fn test_operator_deploy_undeploy() {
     // Check the service has been created as well
     let service_api: Api<Service> = Api::namespaced(client.clone(), &namespace);
     let service: Service = service_api.get(h2o_name).await.unwrap();
-    assert!(service.spec.unwrap().cluster_ip.unwrap().eq("None")); // The service created must be a headless service - thus no cluster ip
+    assert!(service.spec.unwrap().cluster_ip.is_some());
 
     h2o_api.delete(h2o_name, &DeleteParams::default()).await.unwrap();
 

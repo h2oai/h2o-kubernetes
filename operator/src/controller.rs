@@ -114,13 +114,14 @@ async fn reconcile(h2o: H2O, context: Context<ContextData>) -> Result<Reconciler
             delete_h2o_deployment(&h2o, &context).await?;
         }
         ControllerAction::Verify => {
+            info!("Verifying an existing H2O deployment '{}'", h2o.name()); // Log the whole incoming H2O description
             let h2o_serialized: String = serde_yaml::to_string(&h2o).unwrap_or(h2o.name());
-            info!("No action taken for an existing deployment:\n{}", h2o_serialized); // Log the whole incoming H2O description
+            info!("H2O '{}' verified. Status OK. ", h2o.name()); // Log the whole incoming H2O description
         }
     }
 
     return Ok(ReconcilerAction {
-        requeue_after: None,
+        requeue_after: Some(Duration::from_secs(5)),
     });
 }
 
@@ -136,7 +137,7 @@ async fn reconcile(h2o: H2O, context: Context<ContextData>) -> Result<Reconciler
 fn error_policy(error: &Error, _context: Context<ContextData>) -> ReconcilerAction {
     error!("Reconciliation error:\n{:?}", error);
     ReconcilerAction {
-        requeue_after: Some(Duration::from_secs(10)),
+        requeue_after: Some(Duration::from_secs(5)),
     }
 }
 
@@ -255,12 +256,16 @@ async fn delete_h2o_deployment(
 ) -> Result<ReconcilerAction, Error> {
     info!("Attempting to delete H2O deployment: {}", h2o.name());
     let data: &ContextData = context.get_ref();
+    let client: Client = data.client.clone();
     let name: &str = h2o.metadata.name.as_ref()
         .ok_or(Error::UserError("Unable to delete H2O deployment. No H2O name provided.".to_string()))?;
     let namespace: &str = h2o.meta().namespace.as_ref()
         .ok_or(Error::UserError("Unable to delete H2O deployment. No namespace provided.".to_string()))?;
-    deployment::service::delete(data.client.clone(), namespace, name).await.unwrap();
-    // TODO: Wait for resources to be deleted before exitting.
+    deployment::service::delete(client.clone(), namespace, name).await.unwrap();
+    deployment::pod::delete_pods_label(client.clone(), namespace, name).await;
+    deployment::pod::wait_pods_deleted(client.clone(), name, namespace).await?; // TODO: timeout
+
+    // TODO: Wait for resources to be deleted before exit.
 
     deployment::finalizer::remove_finalizer(data.client.clone(), name, namespace).await?;
 
