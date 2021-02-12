@@ -198,6 +198,7 @@ async fn create_h2o_deployment(
         Ok(_) => {
             clustering::cluster_pods(data.client.clone(), &data.namespace, &name, h2o.spec.nodes as usize).await;
             deployment::finalizer::add_finalizer(data.client.clone(), &data.namespace, &name).await.unwrap();
+            deployment::crd::set_ready_condition(data.client.clone(), &name, &data.namespace, true).await.unwrap();
         }
         Err(_) => {
                 return Err(Error::DeploymentError("".to_owned()));
@@ -221,7 +222,7 @@ async fn create_h2o_pods(client: Client, h2o_spec: &H2OSpec, name: &str, namespa
                 pods_ips.push('\n');
             }
 
-            info!("The following pods were created for '{}': {}", name, pods_ips);
+            info!("The following pods were created for '{}':\n{}", name, pods_ips);
             Ok(())
         }
         Err(errors) => {
@@ -232,8 +233,6 @@ async fn create_h2o_pods(client: Client, h2o_spec: &H2OSpec, name: &str, namespa
         error!("Unable to create pods for '{}'. Errors:\n{}", name, errors_joined);
             Err(())
         }
-
-
     }
 }
 

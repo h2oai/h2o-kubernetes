@@ -11,7 +11,6 @@ use log::debug;
 
 use crate::crd::H2OSpec;
 use crate::Error;
-use k8s_openapi::List;
 
 pub const H2O_DEFAULT_PORT: u16 = 54321;
 pub const H2O_CLUSTERING_PORT: u16 = 8080;
@@ -240,7 +239,7 @@ async fn delete_pod(pod_name: &str, api: &Api<Pod>, params: &DeleteParams) -> Re
     Ok(())
 }
 
-pub async fn wait_pods_created<F>(client: Client, pod_label: &str, namespace: &str, expected_count: usize, pod_status_check: F) -> Vec<Pod>
+pub async fn wait_pod_status<F>(client: Client, pod_label: &str, namespace: &str, expected_count: usize, pod_status_check: F) -> Vec<Pod>
     where F: Fn(&Pod) -> bool {
     let api: Api<Pod> = Api::<Pod>::namespaced(client.clone(), namespace);
     let list_params: ListParams = ListParams::default()
@@ -346,7 +345,7 @@ mod tests {
     use tests_common::kubeconfig_location_panic;
 
     use crate::crd::{H2OSpec, Resources};
-    use crate::pod::wait_pods_created;
+    use crate::pod::wait_pod_status;
 
     #[tokio::test]
     async fn test_create_pods() {
@@ -368,7 +367,7 @@ mod tests {
         assert_eq!(h2o_spec.nodes as usize, created_pods.len());
 
         // Wait for all the pods to be created and check their count
-        let verified_pods: Vec<Pod> = wait_pods_created(client.clone(), h2o_name, &namespace, node_count,
+        let verified_pods: Vec<Pod> = wait_pod_status(client.clone(), h2o_name, &namespace, node_count,
                                                         |pod| { pod.metadata.creation_timestamp.is_some() }).await;
         assert_eq!(h2o_spec.nodes as usize, verified_pods.len());
 

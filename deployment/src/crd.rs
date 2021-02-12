@@ -1,11 +1,12 @@
 extern crate log;
 
 use kube::{Api, Client, CustomResource};
-use kube::api::{PatchParams};
+use kube::api::{PatchParams, ListParams};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-
 use crate::{Error, finalizer};
+use futures::StreamExt;
+use kube_runtime::watcher::Event;
 
 /// Specification of an H2O cluster in a Kubernetes cluster.
 /// Determines attributes like cluster size, resources (cpu, memory) and pod configuration.
@@ -45,8 +46,31 @@ impl H2OSpec {
         }
     }
 }
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, JsonSchema, Default)]
-pub struct H2OStatus{
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, JsonSchema)]
+pub struct H2OStatus {
+    phase: Option<String>,
+    conditions: Option<Vec<Condition>>,
+}
+
+impl H2OStatus {
+    pub fn new(phase: Option<String>, conditions: Option<Vec<Condition>>) -> Self {
+        H2OStatus { phase, conditions }
+    }
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, JsonSchema)]
+pub struct Condition {
+    #[serde(rename = "type")]
+    cond_type: String,
+    status: String,
+}
+
+impl Condition {
+    pub fn new(cond_type: String, status: String) -> Self {
+        Condition { cond_type, status }
+    }
 }
 
 
@@ -131,10 +155,11 @@ pub fn has_h2o3_finalizer(h2o: &H2O) -> bool {
     };
 }
 
-pub async fn add_empty_status(client: Client, name: &str, namespace: &str) -> Result<H2O, Error> {
+pub async fn set_ready_condition(client: Client, name: &str, namespace: &str, ready: bool) -> Result<H2O, Error> {
     let api: Api<H2O> = Api::namespaced(client.clone(), namespace);
     let mut h2o: H2O = api.get(name).await.unwrap();
-    let status: H2OStatus = H2OStatus::default();
+    let condition: Condition = Condition::new("Ready".to_owned(), ready.to_string());
+    let status: H2OStatus = H2OStatus::new(Some("Running".to_owned()), Some(vec!(condition)));
     h2o.status = Option::Some(status);
 
     let result: Result<H2O, Error> = api.patch_status(name, &PatchParams::default(), serde_json::to_vec(&h2o)
@@ -142,4 +167,65 @@ pub async fn add_empty_status(client: Client, name: &str, namespace: &str) -> Re
         .map_err(Error::from);
 
     return result;
+}
+
+pub async fn wait_ready_h2o(client: Client, name: &str, namespace: &str) {
+    let api: Api<H2O> = Api::namespaced(client.clone(), namespace);
+
+    let list_params: ListParams = ListParams::default()
+        .fields(&format!("metadata.name={}", name));
+    let mut pod_events = kube_runtime::watcher(api, list_params).boxed();
+
+    while let Some(result) = pod_events.next().await {
+        match result {
+            Ok(event) => {
+                match event {
+                    Event::Applied(h2o) =>{
+                        if h2o.status.is_none() {
+                            continue;
+                        }
+                        if h2o.status.unwrap().conditions.is_some(){
+                            break;
+                        }
+                    },
+                    Event::Restarted(h2os) => {
+                        for h2o in h2os {
+                            if h2o.status.is_none() {
+                                continue;
+                            }
+                            if h2o.status.unwrap().conditions.is_some(){ // TODO check all options
+                                break;
+                            }
+                        }
+                    },
+                    Event::Deleted(h2o)=>{
+                    }
+                }
+            },
+            Err(_) => {}
+        }
+    }
+}
+
+pub async fn wait_deleted_h2o(client: Client, name: &str, namespace: &str) {
+    let api: Api<H2O> = Api::namespaced(client.clone(), namespace);
+
+    let list_params: ListParams = ListParams::default()
+        .fields(&format!("metadata.name={}", name));
+    let mut pod_events = kube_runtime::watcher(api, list_params).boxed();
+
+    while let Some(result) = pod_events.next().await {
+        match result {
+            Ok(event) => {
+                match event {
+                    Event::Deleted(_)=>{
+                        break;
+                    },
+                    _ => {
+                    }
+                }
+            },
+            Err(_) => {}
+        }
+    }
 }

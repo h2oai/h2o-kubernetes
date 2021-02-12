@@ -4,7 +4,7 @@ metadata:
   name: h2o-test
 spec:
   version: "3.32.0.1"
-  nodes: 3
+  nodes: 1
   resources:
     cpu: 1
     memory: "256Mi"

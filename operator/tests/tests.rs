@@ -37,6 +37,8 @@ async fn test_operator_deploy_undeploy() {
         info!("{:?}", pod);
     });
 
+    deployment::crd::wait_ready_h2o(client.clone(), h2o_name, &namespace).await;
+
     // Check the service has been created as well
     let service_api: Api<Service> = Api::namespaced(client.clone(), &namespace);
     let service: Service = service_api.get(h2o_name).await.unwrap();
@@ -45,6 +47,7 @@ async fn test_operator_deploy_undeploy() {
     h2o_api.delete(h2o_name, &DeleteParams::default()).await.unwrap();
 
     assert!(wait_pods_deleted(client.clone(), h2o_name, &namespace).await.is_ok());
+    deployment::crd::wait_deleted_h2o(client.clone(), h2o_name, &namespace).await;
 
     h2o_operator_process.kill().unwrap();
 }

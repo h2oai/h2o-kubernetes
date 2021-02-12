@@ -23,7 +23,7 @@ pub async fn cluster_pods(client: Client, namespace: &str, pod_label: &str, expe
         false
     };
 
-    let created_pods: Vec<Pod> = deployment::pod::wait_pods_created(client.clone(), pod_label, namespace,
+    let created_pods: Vec<Pod> = deployment::pod::wait_pod_status(client.clone(), pod_label, namespace,
                                                                     expected_pod_count as usize,
                                                                     pod_has_ip_check,
     ).await;
