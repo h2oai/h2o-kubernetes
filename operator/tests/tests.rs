@@ -45,7 +45,7 @@ async fn test_operator_deploy_undeploy() {
     assert!(service.spec.unwrap().cluster_ip.is_some());
 
     h2o_api.delete(h2o_name, &DeleteParams::default()).await.unwrap();
-
+    deployment::configmap::delete(client.clone(), &namespace).await.unwrap();
     assert!(wait_pods_deleted(client.clone(), h2o_name, &namespace).await.is_ok());
     deployment::crd::wait_deleted_h2o(client.clone(), h2o_name, &namespace).await;
 

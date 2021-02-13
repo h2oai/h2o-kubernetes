@@ -16,6 +16,7 @@ jobs:
           version: 'latest'
       - uses: actions/checkout@v2
       - name: Run tests
+        timeout-minutes: 15
         run: |
           # 🄿🅁🄴🄿🄰🅁🄰🅃🄸🄾🄽🅂
           # debianmaster/actions-k3s sets owner of the Kubeconfig output to a different user.
