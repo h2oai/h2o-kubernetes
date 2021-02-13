@@ -130,7 +130,7 @@ async fn create_mandatory_resources(client: Client, namespace: &str){
 /// ```
 fn initialize_logging() {
     SimpleLogger::new()
-        .with_level(LevelFilter::Info)
+        .with_level(LevelFilter::Info)//TODO: User - Controllable logging
         .init()
         .unwrap();
 }

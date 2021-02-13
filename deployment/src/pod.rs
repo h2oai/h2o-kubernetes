@@ -333,7 +333,7 @@ pub async fn delete_pods_label(client: Client, namespace: &str, label: &str){
     let api: Api<Pod> = Api::namespaced(client, namespace);
     let pods_list_params: ListParams = ListParams::default()
         .labels(&format!("app={}", label));
-    let x = api.delete_collection(&DeleteParams::default(), &pods_list_params).await;
+    api.delete_collection(&DeleteParams::default(), &pods_list_params).await.unwrap();
 }
 
 

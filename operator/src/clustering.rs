@@ -10,7 +10,7 @@ use kube::{Api, Client};
 use kube::api::PatchParams;
 use serde::{Deserialize, Serialize};
 use tokio::time::Duration;
-use log::info;
+use log::{info, debug};
 
 use deployment::Error;
 use std::str::FromStr;
@@ -24,8 +24,8 @@ pub async fn cluster_pods(client: Client, namespace: &str, pod_label: &str, expe
     };
 
     let created_pods: Vec<Pod> = deployment::pod::wait_pod_status(client.clone(), pod_label, namespace,
-                                                                    expected_pod_count as usize,
-                                                                    pod_has_ip_check,
+                                                                  expected_pod_count as usize,
+                                                                  pod_has_ip_check,
     ).await;
 
     let pod_ips: Vec<IpAddr> = created_pods.iter()
@@ -40,7 +40,7 @@ pub async fn cluster_pods(client: Client, namespace: &str, pod_label: &str, expe
 
 
     let http_client: HyperClient<HttpConnector> = HyperClient::new();
-    wait_clustering_api_online(&pod_ips, &http_client).await;
+    wait_clustering_api_online(&pod_ips, &http_client, pod_label).await;
     send_flatfile(&pod_ips, &http_client).await;
     let leader_node_timeout = tokio::time::timeout(Duration::from_secs(180), wait_h2o_clustered(&http_client, &pod_ips)).await;
     let leader_node_socket_addr: SocketAddr = leader_node_timeout.unwrap().unwrap(); // TODO: Remove unwrap
@@ -67,7 +67,7 @@ pub async fn cluster_pods(client: Client, namespace: &str, pod_label: &str, expe
     deployment::service::create(client, namespace, pod_label, &format!("{}-leader", pod_label)).await.unwrap(); // TODO: Remove unwrap
 }
 
-async fn wait_clustering_api_online(pod_ips: &[IpAddr], http_client: &HyperClient<HttpConnector>) {
+async fn wait_clustering_api_online(pod_ips: &[IpAddr], http_client: &HyperClient<HttpConnector>, pod_label: &str) {
     let pod_api_call = |pod_ip: &IpAddr| {
         let request: Request<Body> = Request::builder()
             .method(Method::GET)
@@ -87,7 +87,10 @@ async fn wait_clustering_api_online(pod_ips: &[IpAddr], http_client: &HyperClien
             .map(|response| {
                 let result = match response {
                     Ok(response) => { response.status() == 204 }
-                    Err(_) => { false }
+                    Err(err) => {
+                        debug!("'{}' pod clustering REST API not ready yet: {}", pod_label, err);
+                        false
+                    }
                 };
                 result
             })

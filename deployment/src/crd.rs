@@ -198,7 +198,7 @@ pub async fn wait_ready_h2o(client: Client, name: &str, namespace: &str) {
                             }
                         }
                     },
-                    Event::Deleted(h2o)=>{
+                    Event::Deleted(_)=>{
                     }
                 }
             },

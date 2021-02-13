@@ -18,6 +18,7 @@ jobs:
       - name: Run tests
         timeout-minutes: 15
         run: |
+          export H2O_CLUSTERING_JAR_PATH=$(pwd)/operator/tests/dependencies/h2o-clustering.jar
           # 🄿🅁🄴🄿🄰🅁🄰🅃🄸🄾🄽🅂
           # debianmaster/actions-k3s sets owner of the Kubeconfig output to a different user.
           # To generate kubeconfigs for specific service accounts, current user must have read rights to the cluster-admin kubeconfig folder
