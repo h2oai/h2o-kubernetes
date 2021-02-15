@@ -30,4 +30,7 @@ RUN rustup self uninstall -y
 RUN microdnf remove make cmake cmake-data openssl-devel gcc && microdnf clean all
 RUN rm /opt/h2o-operator/ -rf
 
+COPY h2o-clustering.jar /opt/h2o-clustering/h2o-clustering.jar
+ENV H2O_CLUSTERING_JAR_PATH=/opt/h2o-clustering/h2o-clustering.jar
+
 CMD /opt/h2oai/h2o-operator

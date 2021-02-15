@@ -2,15 +2,13 @@ use std::borrow::{BorrowMut};
 use std::net::{IpAddr, SocketAddr};
 
 use futures::StreamExt;
-use hyper::{Body, Client as HyperClient, Method, Request, Response, StatusCode};
-use hyper::client::{HttpConnector};
-use hyper::header::CONTENT_TYPE;
 use k8s_openapi::api::core::v1::Pod;
 use kube::{Api, Client};
 use kube::api::PatchParams;
 use serde::{Deserialize, Serialize};
 use tokio::time::Duration;
 use log::{info, debug};
+use reqwest::{Client as ReqwestClient, Response};
 
 use deployment::Error;
 use std::str::FromStr;
@@ -39,10 +37,10 @@ pub async fn cluster_pods(client: Client, namespace: &str, pod_label: &str, expe
         .collect();
 
 
-    let http_client: HyperClient<HttpConnector> = HyperClient::new();
-    wait_clustering_api_online(&pod_ips, &http_client, pod_label).await;
-    send_flatfile(&pod_ips, &http_client).await;
-    let leader_node_timeout = tokio::time::timeout(Duration::from_secs(180), wait_h2o_clustered(&http_client, &pod_ips)).await;
+    let reqwest: ReqwestClient = ReqwestClient::new();
+    wait_clustering_api_online(&pod_ips, &reqwest, pod_label).await;
+    send_flatfile(&pod_ips, &reqwest).await;
+    let leader_node_timeout = tokio::time::timeout(Duration::from_secs(180), wait_h2o_clustered(&reqwest, &pod_ips)).await;
     let leader_node_socket_addr: SocketAddr = leader_node_timeout.unwrap().unwrap(); // TODO: Remove unwrap
 
     let mut leader_node_pod: Pod = created_pods.into_iter()
@@ -67,33 +65,15 @@ pub async fn cluster_pods(client: Client, namespace: &str, pod_label: &str, expe
     deployment::service::create(client, namespace, pod_label, &format!("{}-leader", pod_label)).await.unwrap(); // TODO: Remove unwrap
 }
 
-async fn wait_clustering_api_online(pod_ips: &[IpAddr], http_client: &HyperClient<HttpConnector>, pod_label: &str) {
-    let pod_api_call = |pod_ip: &IpAddr| {
-        let request: Request<Body> = Request::builder()
-            .method(Method::GET)
-            .uri(format!("http://{}:{}/cluster/status", pod_ip, deployment::pod::H2O_CLUSTERING_PORT))
-            .body(Body::empty()).unwrap();
-        http_client.request(request)
-    };
-
+async fn wait_clustering_api_online(pod_ips: &[IpAddr], reqwest: &ReqwestClient, pod_label: &str) {
     let mut all_pods_apis_ready: bool = false;
 
     while !all_pods_apis_ready {
         all_pods_apis_ready = futures::stream::iter(0..pod_ips.len())
             .map(|pod_ip_idx| {
-                pod_api_call(&pod_ips[pod_ip_idx])
+                clustering_api_available(reqwest, &pod_ips[pod_ip_idx])
             })
             .buffer_unordered(pod_ips.len())
-            .map(|response| {
-                let result = match response {
-                    Ok(response) => { response.status() == 204 }
-                    Err(err) => {
-                        debug!("'{}' pod clustering REST API not ready yet: {}", pod_label, err);
-                        false
-                    }
-                };
-                result
-            })
             .fold(true, |r1, r2| {
                 futures::future::ready(r1 && r2)
             }).await;
@@ -101,18 +81,31 @@ async fn wait_clustering_api_online(pod_ips: &[IpAddr], http_client: &HyperClien
     }
 }
 
-async fn send_flatfile(pod_ips: &[IpAddr], http_client: &HyperClient<HttpConnector>) -> bool { // TODO: Parse to IpAddr
+async fn clustering_api_available(reqwest: &ReqwestClient, pod_ip: &IpAddr) -> bool {
+    let response = reqwest.get(&format!("http://{}:{}/cluster/status", pod_ip.to_string(), deployment::pod::H2O_CLUSTERING_PORT))
+        .send()
+        .await;
+
+    return match response {
+        Ok(response) => {
+            response.status() == 204
+        }
+        Err(_) => {
+            false
+        }
+    };
+}
+
+async fn send_flatfile(pod_ips: &[IpAddr], reqwest: &ReqwestClient) -> bool { // TODO: Parse to IpAddr
     let flatfile: String = create_flatfile(pod_ips);
     // Send all flat files to all H2O nodes concurrently.
     futures::stream::iter(0..pod_ips.len()).map(|pod_index| {
         let pod_ip = &pod_ips[pod_index];
         info!("Sending flatfile to: {}", format!("http://{}:8080/clustering/flatfile", pod_ip.to_string()));
-        let request = Request::builder()
-            .method(Method::POST)
-            .uri(format!("http://{}:{}/clustering/flatfile", pod_ip.to_string(), deployment::pod::H2O_CLUSTERING_PORT))
-            .header(CONTENT_TYPE, "text/plain")
-            .body(Body::from(flatfile.clone())).unwrap(); // TODO: remove unwrap
-        http_client.request(request)
+        reqwest.post(&format!("http://{}:{}/clustering/flatfile", pod_ip.to_string(), deployment::pod::H2O_CLUSTERING_PORT))
+            .header(reqwest::header::CONTENT_TYPE, "text/plain")
+            .body(flatfile.clone())
+            .send()
     }).buffer_unordered(pod_ips.len())
         .map(|result| {
             result.unwrap().status() == 200
@@ -140,22 +133,20 @@ struct H2OClusterStatus {
     unhealthy_nodes: Vec<String>,
 }
 
-async fn wait_h2o_clustered(http_client: &HyperClient<HttpConnector>, pod_ips: &[IpAddr]) -> Result<SocketAddr, Error> {
+async fn wait_h2o_clustered(reqwest: &ReqwestClient, pod_ips: &[IpAddr]) -> Result<SocketAddr, Error> {
     let h2o_pod_ip = pod_ips.get(0).expect("Expected H2O cluster to have at least one node."); // TODO: Rule out this possibility of empty cluster - add a proper reaction
 
     let cluster_status: H2OClusterStatus;
     'clustering: loop {
-        let cluster_status_request = Request::builder()
-            .uri(format!("http://{}:8080/cluster/status", h2o_pod_ip))
-            .body(Body::empty()).unwrap(); // TODO: Remove unwrap
-        let cluster_status_response = http_client.request(cluster_status_request).await;
+        let cluster_status_response = reqwest.get(&format!("http://{}:8080/cluster/status", h2o_pod_ip))
+            .send().await;
         match cluster_status_response {
             Ok(status) => {
                 if status.status() != 200 {
                     tokio::time::sleep(Duration::from_millis(100)).await;
                     continue 'clustering;
                 } else {
-                    cluster_status = serde_json::from_slice(&hyper::body::to_bytes(status.into_body()).await.unwrap()).unwrap();
+                    cluster_status = status.json().await?;
                     break 'clustering;
                 }
             }

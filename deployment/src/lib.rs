@@ -9,6 +9,7 @@ use kube_runtime::watcher::Error as WatcherError;
 use serde_json::Error as JsonError;
 use serde_yaml::Error as YamlError;
 use thiserror::Error as ThisError;
+use reqwest::Error as ReqwestError;
 
 use crate::crd::H2OSpec;
 
@@ -40,6 +41,8 @@ pub enum Error {
     WatcherError(WatcherError),
     #[error("Error during H2O subresources deployment: {0}")]
     DeploymentError(String),
+    #[error("Hyper error: {0}")]
+    ReqwestError(ReqwestError),
 }
 
 impl From<KubeError> for Error {
@@ -63,6 +66,12 @@ impl From<JsonError> for Error {
 impl From<WatcherError> for Error {
     fn from(watcher_error: WatcherError) -> Self {
         Error::WatcherError(watcher_error)
+    }
+}
+
+impl From<ReqwestError> for Error {
+    fn from(reqwest_error: ReqwestError) -> Self {
+        Error::ReqwestError(reqwest_error)
     }
 }
 

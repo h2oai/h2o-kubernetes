@@ -14,7 +14,6 @@ use std::path::{PathBuf, Path};
 use std::str::FromStr;
 use k8s_openapi::api::core::v1::ConfigMap;
 use kube::api::Meta;
-use kube::client::Status;
 
 mod controller;
 mod clustering;

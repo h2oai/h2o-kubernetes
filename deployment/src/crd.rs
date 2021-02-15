@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::{Error, finalizer};
 use futures::StreamExt;
 use kube_runtime::watcher::Event;
+use log::info;
 
 /// Specification of an H2O cluster in a Kubernetes cluster.
 /// Determines attributes like cluster size, resources (cpu, memory) and pod configuration.
@@ -135,6 +136,24 @@ impl CustomImage {
 /// `h2o` - The `H2O` resource instance, representing the current state of the resource in Kubernetes cluster.
 pub fn has_deletion_stamp(h2o: &H2O) -> bool {
     return h2o.metadata.deletion_timestamp.is_some();
+}
+
+pub fn is_ready(h2o: &H2O) -> bool {
+    if h2o.status.is_none(){
+        return false;
+    }
+    let status: &H2OStatus = h2o.status.as_ref().unwrap();
+    return match status.conditions.as_ref() {
+        None => { false }
+        Some(conditions) => {
+            conditions.iter()
+                .filter(|condition| {
+                    info!("{:?}", condition);
+                    condition.cond_type.eq("Ready")
+                    && condition.status.eq("true")
+                }).count() > 0
+        }
+    }
 }
 
 /// Scans `H2O` resource and returns `true` if there is a finalizer intended to be handled

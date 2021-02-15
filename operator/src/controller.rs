@@ -10,6 +10,7 @@ use log::{error, info};
 use deployment::crd::{H2O, H2OSpec};
 use deployment::Error;
 use crate::clustering;
+use crate::verification;
 use k8s_openapi::api::core::v1::Pod;
 
 /// Creates and runs an instance of `kube_runtime::Controller` internally, endlessly waiting for incoming events
@@ -106,23 +107,44 @@ enum ControllerAction {
 /// # Examples
 /// No examples provided, as this method should be called only by the controller.
 async fn reconcile(h2o: H2O, context: Context<ContextData>) -> Result<ReconcilerAction, Error> {
-    match examine_h2o_for_actions(&h2o) {
+    return match examine_h2o_for_actions(&h2o) {
         ControllerAction::Create => {
             create_h2o_deployment(&h2o, &context).await?;
+            Ok(ReconcilerAction {
+                requeue_after: Some(Duration::from_secs(5)),
+            })
         }
         ControllerAction::Delete => {
             delete_h2o_deployment(&h2o, &context).await?;
+            Ok(ReconcilerAction {
+                requeue_after: Some(Duration::from_secs(5)),
+            })
         }
         ControllerAction::Verify => {
             info!("Verifying an existing H2O deployment '{}'", h2o.name()); // Log the whole incoming H2O description
-            let h2o_serialized: String = serde_yaml::to_string(&h2o).unwrap_or(h2o.name());
-            info!("H2O '{}' verified. Status OK. ", h2o.name()); // Log the whole incoming H2O description
+            let data: &ContextData = context.get_ref();
+            let client: &Client = &data.client;
+            let name: &str = &h2o.name();
+            let namespace: &str = &data.namespace;
+            let cluster_ok: bool = verification::check_h2o_cluster_integrity(data.client.clone(), name, namespace, &h2o.spec).await;
+
+            if cluster_ok {
+                info!("H2O '{}' verified. Status OK. ", h2o.name()); // Log the whole incoming H2O description
+                Ok(ReconcilerAction {
+                    requeue_after: Some(Duration::from_secs(5)),
+                })
+            } else {
+                info!("H2O '{}' in namespace '{}' found in incosistent state. Deleting and recreating all resources.", name, namespace);
+                deployment::pod::delete_pods_label(client.clone(), namespace, name).await;
+                deployment::service::delete(client.clone(), namespace, name).await.unwrap();
+                deployment::crd::set_ready_condition(client.clone(), name, namespace, false).await.unwrap();
+                deployment::pod::wait_pods_deleted(client.clone(), name, namespace).await.unwrap();
+                Ok(ReconcilerAction {
+                    requeue_after: Some(Duration::from_secs(5)),
+                })
+            }
         }
     }
-
-    return Ok(ReconcilerAction {
-        requeue_after: Some(Duration::from_secs(5)),
-    });
 }
 
 /// Reconciliation failure logic, intended to be called by the controller itself. Logs the error
@@ -155,9 +177,10 @@ fn error_policy(error: &Error, _context: Context<ContextData>) -> ReconcilerActi
 fn examine_h2o_for_actions(h2o: &H2O) -> ControllerAction {
     let has_finalizer: bool = deployment::crd::has_h2o3_finalizer(&h2o);
     let has_deletion_timestamp: bool = deployment::crd::has_deletion_stamp(&h2o);
+    let is_ready: bool = deployment::crd::is_ready(&h2o);
     return if has_finalizer && has_deletion_timestamp {
         ControllerAction::Delete
-    } else if !has_finalizer && !has_deletion_timestamp {
+    } else if !has_deletion_timestamp && !is_ready {
         ControllerAction::Create
     } else {
         ControllerAction::Verify
@@ -192,12 +215,12 @@ async fn create_h2o_deployment(
     let name: String = h2o.metadata.name.clone()
         .ok_or(Error::UserError("Unable to create H2O deployment. No H2O name provided.".to_string()))?;
 
+    deployment::finalizer::add_finalizer(data.client.clone(), &data.namespace, &name).await.unwrap();
     let create_pods_result = create_h2o_pods(data.client.clone(), &h2o.spec, &name, &data.namespace).await;
 
     match create_pods_result{
         Ok(_) => {
             clustering::cluster_pods(data.client.clone(), &data.namespace, &name, h2o.spec.nodes as usize).await;
-            deployment::finalizer::add_finalizer(data.client.clone(), &data.namespace, &name).await.unwrap();
             deployment::crd::set_ready_condition(data.client.clone(), &name, &data.namespace, true).await.unwrap();
         }
         Err(_) => {
