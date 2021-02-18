@@ -17,8 +17,9 @@ tokio = { version = "~1.0", features = ["macros", "rt-multi-thread"] }
 log = "0.4.11"
 simple_logger = "1.11.0"
 reqwest = "~0.11"
-deployment = { path = "../deployment" }
+thiserror = "~1.0"
+schemars = "~0.8"
+either = "~1.6"
 
 [dev-dependencies]
 assert_cmd = "1.0.1"
-tests_common = { path = "../tests_common" }

@@ -1,22 +1,20 @@
-use deployment::crd::H2OSpec;
 use kube::{Client, Api};
 use k8s_openapi::api::core::v1::Pod;
 use kube::api::{ListParams};
 use log::{error};
 use std::net::{IpAddr, SocketAddr};
-use reqwest::{Client as ReqwestClient, Response};
+use reqwest::{Client as ReqwestClient};
 use serde::{Serialize, Deserialize};
-use deployment::Error;
 use std::str::FromStr;
 use futures::StreamExt;
-use std::time::Duration;
+use crate::deployment::crd::H2OSpec;
+use crate::deployment::{pod, Error};
 
 pub async fn check_h2o_cluster_integrity(client: Client, name: &str, namespace: &str, h2o_spec: &H2OSpec) -> bool {
     return cluster_healthy(client.clone(), namespace, name, h2o_spec.nodes).await;
 }
 
 async fn cluster_healthy(client: Client, namespace: &str, pod_label: &str, node_count: u32) -> bool {
-    tokio::time::sleep(Duration::from_secs(3)).await;
     let api: Api<Pod> = Api::namespaced(client.clone(), namespace);
     let pod_list_params: ListParams = ListParams::default()
         .labels(&format!("app={}", pod_label));
@@ -28,7 +26,7 @@ async fn cluster_healthy(client: Client, namespace: &str, pod_label: &str, node_
         return false;
     }
     let pods: Vec<Pod> = pods_result.unwrap().items;
-    if pods.len() != node_count as usize{
+    if pods.len() != node_count as usize {
         return false;
     }
 
@@ -63,7 +61,7 @@ pub struct H2ONodeStatus {
 }
 
 pub async fn pod_status(pod_ip: IpAddr, reqwest: &ReqwestClient) -> Result<H2ONodeStatus, Error> {
-    let pod_status: H2ONodeStatus = reqwest.get(&format!("http://{}:{}/cluster/status", pod_ip, deployment::pod::H2O_CLUSTERING_PORT))
+    let pod_status: H2ONodeStatus = reqwest.get(&format!("http://{}:{}/cluster/status", pod_ip, pod::H2O_CLUSTERING_PORT))
         .send()
         .await?
         .json()

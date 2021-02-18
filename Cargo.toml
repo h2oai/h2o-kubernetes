@@ -1,5 +1,5 @@
 [workspace]
 
 members = [
-    "deployment", "cli", "operator", "tests_common"
+    "operator"
 ]

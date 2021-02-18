@@ -7,11 +7,12 @@ use kube::{Api, Client};
 use kube::api::PatchParams;
 use serde::{Deserialize, Serialize};
 use tokio::time::Duration;
-use log::{info, debug};
-use reqwest::{Client as ReqwestClient, Response};
+use log::{info};
+use reqwest::{Client as ReqwestClient};
 
-use deployment::Error;
 use std::str::FromStr;
+use crate::deployment::pod::wait_pod_status;
+use crate::deployment::{service, pod, Error};
 
 pub async fn cluster_pods(client: Client, namespace: &str, pod_label: &str, expected_pod_count: usize) {
     let pod_has_ip_check: fn(&Pod) -> bool = |pod| {
@@ -21,7 +22,7 @@ pub async fn cluster_pods(client: Client, namespace: &str, pod_label: &str, expe
         false
     };
 
-    let created_pods: Vec<Pod> = deployment::pod::wait_pod_status(client.clone(), pod_label, namespace,
+    let created_pods: Vec<Pod> = wait_pod_status(client.clone(), pod_label, namespace,
                                                                   expected_pod_count as usize,
                                                                   pod_has_ip_check,
     ).await;
@@ -62,7 +63,7 @@ pub async fn cluster_pods(client: Client, namespace: &str, pod_label: &str, expe
     let api: Api<Pod> = Api::namespaced(client.clone(), namespace);
     api.patch_status(&leader_node_pod.metadata.name.as_ref().unwrap(), &PatchParams::default(), serde_json::to_vec(&leader_node_pod).unwrap()).await.unwrap();
 
-    deployment::service::create(client, namespace, pod_label, &format!("{}-leader", pod_label)).await.unwrap(); // TODO: Remove unwrap
+    service::create(client, namespace, pod_label, &format!("{}-leader", pod_label)).await.unwrap(); // TODO: Remove unwrap
 }
 
 async fn wait_clustering_api_online(pod_ips: &[IpAddr], reqwest: &ReqwestClient, pod_label: &str) {
@@ -82,7 +83,7 @@ async fn wait_clustering_api_online(pod_ips: &[IpAddr], reqwest: &ReqwestClient,
 }
 
 async fn clustering_api_available(reqwest: &ReqwestClient, pod_ip: &IpAddr) -> bool {
-    let response = reqwest.get(&format!("http://{}:{}/cluster/status", pod_ip.to_string(), deployment::pod::H2O_CLUSTERING_PORT))
+    let response = reqwest.get(&format!("http://{}:{}/cluster/status", pod_ip.to_string(), pod::H2O_CLUSTERING_PORT))
         .send()
         .await;
 
@@ -102,7 +103,7 @@ async fn send_flatfile(pod_ips: &[IpAddr], reqwest: &ReqwestClient) -> bool { //
     futures::stream::iter(0..pod_ips.len()).map(|pod_index| {
         let pod_ip = &pod_ips[pod_index];
         info!("Sending flatfile to: {}", format!("http://{}:8080/clustering/flatfile", pod_ip.to_string()));
-        reqwest.post(&format!("http://{}:{}/clustering/flatfile", pod_ip.to_string(), deployment::pod::H2O_CLUSTERING_PORT))
+        reqwest.post(&format!("http://{}:{}/clustering/flatfile", pod_ip.to_string(), pod::H2O_CLUSTERING_PORT))
             .header(reqwest::header::CONTENT_TYPE, "text/plain")
             .body(flatfile.clone())
             .send()
@@ -119,7 +120,7 @@ async fn send_flatfile(pod_ips: &[IpAddr], reqwest: &ReqwestClient) -> bool { //
 fn create_flatfile(pod_ipds: &[IpAddr]) -> String {
     pod_ipds.iter()
         .map(|pod_ip| {
-            let pod_socket_addr = SocketAddr::new(pod_ip.clone(), deployment::pod::H2O_DEFAULT_PORT);
+            let pod_socket_addr = SocketAddr::new(pod_ip.clone(), pod::H2O_DEFAULT_PORT);
             pod_socket_addr.to_string()
         })
         .collect::<Vec<String>>()
