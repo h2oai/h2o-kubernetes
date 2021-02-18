@@ -12,9 +12,10 @@ rules:
       - ""
       resources:
       - pods
-      - services
       - events
       - services
+      - configmaps
+      - volumes
       verbs:
       - create
       - delete
@@ -29,15 +30,3 @@ rules:
       - namespaces
       verbs:
       - get
-    - apiGroups:
-      - "apps"
-      resources:
-      - statefulsets
-      verbs:
-      - create
-      - delete
-      - get
-      - list
-      - patch
-      - update
-      - watch

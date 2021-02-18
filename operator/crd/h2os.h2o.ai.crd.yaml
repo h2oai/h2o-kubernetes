@@ -14,7 +14,7 @@ spec:
       served: true
       storage: true
       subresources:
-        status: { }
+        status: {}
       schema:
         openAPIV3Schema:
           type: object
@@ -52,3 +52,19 @@ spec:
                 - required: ["version"]
                 - required: ["customImage"]
               required: ["nodes", "resources"]
+            status:
+              type: object
+              properties:
+                phase:
+                  description: The resource's readiness
+                  type: string
+                conditions:
+                  description: States of this object
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string

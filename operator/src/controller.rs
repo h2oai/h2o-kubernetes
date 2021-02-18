@@ -7,8 +7,11 @@ use kube_runtime::controller::{Context, ReconcilerAction};
 use kube_runtime::Controller;
 use log::{error, info};
 
-use deployment::crd::H2O;
-use deployment::Error;
+use crate::deployment::crd::{H2O, H2OSpec};
+use crate::clustering;
+use crate::verification;
+use k8s_openapi::api::core::v1::Pod;
+use crate::deployment::{pod, service, crd, Error, finalizer};
 
 /// Creates and runs an instance of `kube_runtime::Controller` internally, endlessly waiting for incoming events
 /// on CRDs handled by this operator. Unless there is an error, this function never returns.
@@ -68,8 +71,8 @@ pub async fn run(client: Client, namespace: &str) {
 struct ContextData {
     /// Kubernetes client to manipulate Kubernetes resources
     client: Client,
-    /// Default namespace to deploy resources to - unless explicitly specified by the user
-    default_namespace: String,
+    /// Namespace to deploy H2O subresources to. Also the namespace this operator has been deployed to.
+    namespace: String,
 }
 
 impl ContextData {
@@ -80,7 +83,7 @@ impl ContextData {
     /// - `client` - Kubernetes client to manipulate Kubernetes resources
     /// - `default_namespace` - Default namespace to deploy resources to - unless explicitly specified by the user
     pub fn new(client: Client, default_namespace: String) -> Self {
-        ContextData { client, default_namespace }
+        ContextData { client, namespace: default_namespace }
     }
 }
 
@@ -91,7 +94,7 @@ enum ControllerAction {
     /// Delete resources of an existing H2O Cluster
     Delete,
     /// Updating existing H2O deployment is not supported - once H2O is clustered, it is immutable. Any events requiring on actions.
-    Noop,
+    Verify,
 }
 
 /// Reconciliation logic router, called by the controller once per each event.
@@ -104,22 +107,44 @@ enum ControllerAction {
 /// # Examples
 /// No examples provided, as this method should be called only by the controller.
 async fn reconcile(h2o: H2O, context: Context<ContextData>) -> Result<ReconcilerAction, Error> {
-    match examine_h2o_for_actions(&h2o) {
+    return match examine_h2o_for_actions(&h2o) {
         ControllerAction::Create => {
             create_h2o_deployment(&h2o, &context).await?;
+            Ok(ReconcilerAction {
+                requeue_after: Some(Duration::from_secs(5)),
+            })
         }
         ControllerAction::Delete => {
             delete_h2o_deployment(&h2o, &context).await?;
+            Ok(ReconcilerAction {
+                requeue_after: Some(Duration::from_secs(5)),
+            })
         }
-        ControllerAction::Noop => {
-            let h2o_serialized: String = serde_yaml::to_string(&h2o).unwrap_or(h2o.name());
-            info!("No action taken for an existing deployment:\n{}", h2o_serialized); // Log the whole incoming H2O description
+        ControllerAction::Verify => {
+            info!("Verifying an existing H2O deployment '{}'", h2o.name()); // Log the whole incoming H2O description
+            let data: &ContextData = context.get_ref();
+            let client: &Client = &data.client;
+            let name: &str = &h2o.name();
+            let namespace: &str = &data.namespace;
+            let cluster_ok: bool = verification::check_h2o_cluster_integrity(data.client.clone(), name, namespace, &h2o.spec).await;
+
+            if cluster_ok {
+                info!("H2O '{}' verified. Status OK. ", h2o.name()); // Log the whole incoming H2O description
+                Ok(ReconcilerAction {
+                    requeue_after: Some(Duration::from_secs(5)),
+                })
+            } else {
+                info!("H2O '{}' in namespace '{}' found in incosistent state. Deleting and recreating all resources.", name, namespace);
+                pod::delete_pods_label(client.clone(), namespace, name).await;
+                service::delete(client.clone(), namespace, name).await.unwrap();
+                crd::set_ready_condition(client.clone(), name, namespace, false).await.unwrap();
+                pod::wait_pods_deleted(client.clone(), name, namespace).await.unwrap();
+                Ok(ReconcilerAction {
+                    requeue_after: Some(Duration::from_secs(5)),
+                })
+            }
         }
     }
-
-    return Ok(ReconcilerAction {
-        requeue_after: None,
-    });
 }
 
 /// Reconciliation failure logic, intended to be called by the controller itself. Logs the error
@@ -134,7 +159,7 @@ async fn reconcile(h2o: H2O, context: Context<ContextData>) -> Result<Reconciler
 fn error_policy(error: &Error, _context: Context<ContextData>) -> ReconcilerAction {
     error!("Reconciliation error:\n{:?}", error);
     ReconcilerAction {
-        requeue_after: Some(Duration::from_secs(10)),
+        requeue_after: Some(Duration::from_secs(5)),
     }
 }
 
@@ -150,14 +175,15 @@ fn error_policy(error: &Error, _context: Context<ContextData>) -> ReconcilerActi
 /// and `H2O` instance is constructed by deserializing the H2O resource obtained from Kubernetes itself,
 /// the usage is limited and therefore there are no examples.
 fn examine_h2o_for_actions(h2o: &H2O) -> ControllerAction {
-    let has_finalizer: bool = deployment::crd::has_h2o3_finalizer(&h2o);
-    let has_deletion_timestamp: bool = deployment::crd::has_deletion_stamp(&h2o);
+    let has_finalizer: bool = crd::has_h2o3_finalizer(&h2o);
+    let has_deletion_timestamp: bool = crd::has_deletion_stamp(&h2o);
+    let is_ready: bool = crd::is_ready(&h2o);
     return if has_finalizer && has_deletion_timestamp {
         ControllerAction::Delete
-    } else if !has_finalizer && !has_deletion_timestamp {
+    } else if !has_deletion_timestamp && !is_ready {
         ControllerAction::Create
     } else {
-        ControllerAction::Noop
+        ControllerAction::Verify
     };
 }
 
@@ -189,18 +215,48 @@ async fn create_h2o_deployment(
     let name: String = h2o.metadata.name.clone()
         .ok_or(Error::UserError("Unable to create H2O deployment. No H2O name provided.".to_string()))?;
 
-    let deploy_future =
-        deployment::create_h2o_cluster(data.client.clone(), &h2o.spec, &data.default_namespace, &name);
-    let add_finalizer_future =
-        deployment::finalizer::add_finalizer(data.client.clone(), &data.default_namespace, &name);
+    finalizer::add_finalizer(data.client.clone(), &data.namespace, &name).await.unwrap();
+    let create_pods_result = create_h2o_pods(data.client.clone(), &h2o.spec, &name, &data.namespace).await;
 
-    tokio::try_join!(deploy_future, add_finalizer_future)?;
-    deployment::crd::add_empty_status(data.client.clone(), &name, &data.default_namespace).await.unwrap();
+    match create_pods_result{
+        Ok(_) => {
+            clustering::cluster_pods(data.client.clone(), &data.namespace, &name, h2o.spec.nodes as usize).await;
+            crd::set_ready_condition(data.client.clone(), &name, &data.namespace, true).await.unwrap();
+        }
+        Err(_) => {
+                return Err(Error::DeploymentError("".to_owned()));
+        }
+    }
 
     info!("H2O '{}' successfully deployed.", &name);
     return Ok(ReconcilerAction {
-        requeue_after: Option::None,
+        requeue_after: Option::Some(Duration::from_secs(10)),
     });
+}
+
+async fn create_h2o_pods(client: Client, h2o_spec: &H2OSpec, name: &str, namespace: &str) -> Result<(), ()>{
+    let pod_creation_result: Result<Vec<Pod>, Vec<Error>> = pod::create_pods(client, h2o_spec, name, namespace).await;
+    match pod_creation_result {
+        Ok(pods) => {
+            let mut pods_ips: String = String::new();
+            for pod in pods.iter(){
+                let pod_ip: String = pod::get_pod_ip(pod);
+                pods_ips.push_str(&pod_ip);
+                pods_ips.push('\n');
+            }
+
+            info!("The following pods were created for '{}':\n{}", name, pods_ips);
+            Ok(())
+        }
+        Err(errors) => {
+            let errors_joined: String = errors.iter()
+                .map(|err| err.to_string())
+                .collect::<Vec<String>>()
+                .join(",");
+        error!("Unable to create pods for '{}'. Errors:\n{}", name, errors_joined);
+            Err(())
+        }
+    }
 }
 
 /// Deletes all resources related to the given `H2O` resource intended for deletion,
@@ -222,16 +278,18 @@ async fn delete_h2o_deployment(
 ) -> Result<ReconcilerAction, Error> {
     info!("Attempting to delete H2O deployment: {}", h2o.name());
     let data: &ContextData = context.get_ref();
+    let client: Client = data.client.clone();
     let name: &str = h2o.metadata.name.as_ref()
         .ok_or(Error::UserError("Unable to delete H2O deployment. No H2O name provided.".to_string()))?;
     let namespace: &str = h2o.meta().namespace.as_ref()
         .ok_or(Error::UserError("Unable to delete H2O deployment. No namespace provided.".to_string()))?;
+    service::delete(client.clone(), namespace, name).await.unwrap();
+    pod::delete_pods_label(client.clone(), namespace, name).await;
+    pod::wait_pods_deleted(client.clone(), name, namespace).await?; // TODO: timeout
 
-    let statefulset_future = deployment::statefulset::delete(data.client.clone(), namespace, name);
-    let service_future = deployment::headless_service::delete(data.client.clone(), namespace, name);
+    // TODO: Wait for resources to be deleted before exit.
 
-    tokio::try_join!(statefulset_future, service_future)?;
-    deployment::finalizer::remove_finalizer(data.client.clone(), name, namespace).await?;
+    finalizer::remove_finalizer(data.client.clone(), name, namespace).await?;
 
     info!("Deleted H2O '{}'.", &name);
     return Ok(ReconcilerAction {
