@@ -283,13 +283,11 @@ async fn delete_h2o_deployment(
         .ok_or(Error::UserError("Unable to delete H2O deployment. No H2O name provided.".to_string()))?;
     let namespace: &str = h2o.meta().namespace.as_ref()
         .ok_or(Error::UserError("Unable to delete H2O deployment. No namespace provided.".to_string()))?;
-    service::delete(client.clone(), namespace, name).await.unwrap();
+    finalizer::remove_finalizer(data.client.clone(), name, namespace).await;
+    service::delete(client.clone(), namespace, name).await?;
     pod::delete_pods_label(client.clone(), namespace, name).await;
     pod::wait_pods_deleted(client.clone(), name, namespace).await?; // TODO: timeout
-
     // TODO: Wait for resources to be deleted before exit.
-
-    finalizer::remove_finalizer(data.client.clone(), name, namespace).await?;
 
     info!("Deleted H2O '{}'.", &name);
     return Ok(ReconcilerAction {

@@ -1,7 +1,7 @@
 extern crate log;
 
 use kube::{Api, Client, CustomResource};
-use kube::api::{PatchParams, ListParams};
+use kube::api::{PatchParams, ListParams, Patch};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use crate::{Error};
@@ -182,8 +182,9 @@ pub async fn set_ready_condition(client: Client, name: &str, namespace: &str, re
     let status: H2OStatus = H2OStatus::new(Some("Running".to_owned()), Some(vec!(condition)));
     h2o.status = Option::Some(status);
 
-    let result: Result<H2O, Error> = api.patch_status(name, &PatchParams::default(), serde_json::to_vec(&h2o)
-        .unwrap()).await
+    let patch: Patch<&H2O> = Patch::Apply(&h2o);
+    let result: Result<H2O, Error> = api.patch_status(name, &PatchParams::default(), &patch)
+        .await
         .map_err(Error::from);
 
     return result;

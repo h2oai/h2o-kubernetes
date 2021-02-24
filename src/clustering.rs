@@ -4,7 +4,7 @@ use std::net::{IpAddr, SocketAddr};
 use futures::StreamExt;
 use k8s_openapi::api::core::v1::Pod;
 use kube::{Api, Client};
-use kube::api::PatchParams;
+use kube::api::{PatchParams, Patch};
 use serde::{Deserialize, Serialize};
 use tokio::time::Duration;
 use log::{info};
@@ -61,7 +61,8 @@ pub async fn cluster_pods(client: Client, namespace: &str, pod_label: &str, expe
         .insert("h2o_leader_node_pod".to_owned(), leader_node_label.clone());
 
     let api: Api<Pod> = Api::namespaced(client.clone(), namespace);
-    api.patch_status(&leader_node_pod.metadata.name.as_ref().unwrap(), &PatchParams::default(), serde_json::to_vec(&leader_node_pod).unwrap()).await.unwrap();
+    let patch: Patch<&Pod> = Patch::Apply(&leader_node_pod);
+    api.patch_status(&leader_node_pod.metadata.name.as_ref().unwrap(), &PatchParams::default(), &patch).await.unwrap();
 
     service::create(client, namespace, pod_label, &format!("{}-leader", pod_label)).await.unwrap(); // TODO: Remove unwrap
 }
